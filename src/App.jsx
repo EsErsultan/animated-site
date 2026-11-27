@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
   motion,
@@ -10,8 +10,12 @@ import {
   useSpring,
   useTransform,
 } from 'framer-motion'
-import Watch from './Watch.jsx'
+import { STAGES } from './watchStages.js'
 import './App.css'
+import './Watch.css'
+
+// three.js тяжёлый — грузим 3D-часы отдельным куском, чтобы первый экран открывался быстро.
+const Watch3D = lazy(() => import('./Watch3D.jsx'))
 
 /* ---------- Данные ---------- */
 
@@ -33,6 +37,11 @@ const SECTIONS = [
     id: 's1', label: 'Цифры',
     dark: { '--bg': '#140904', '--bg-2': '#22120a', '--a1': '#ff7a18', '--a2': '#ffd166', '--a3': '#ff3d71' },
     light: { '--bg': '#fff4ea', '--bg-2': '#ffffff', '--a1': '#ea580c', '--a2': '#b45309', '--a3': '#e11d48' },
+  },
+  {
+    id: 'watch', label: 'Механизм',
+    dark: { '--bg': '#080604', '--bg-2': '#15110b', '--a1': '#d4a72c', '--a2': '#7dd3fc', '--a3': '#ef4444' },
+    light: { '--bg': '#f8f4ea', '--bg-2': '#ffffff', '--a1': '#b7861b', '--a2': '#0369a1', '--a3': '#dc2626' },
   },
   {
     id: 'parallax', label: 'Параллакс',
@@ -792,6 +801,74 @@ function Stats() {
   )
 }
 
+function StageBar({ progress, from, to }) {
+  const scaleX = useTransform(progress, [from, to], [0, 1])
+  return (
+    <span>
+      <motion.i style={{ scaleX }} />
+    </span>
+  )
+}
+
+function WatchSection() {
+  const ref = useRef(null)
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] })
+  const [stage, setStage] = useState(0)
+  useEffect(
+    () =>
+      scrollYProgress.on('change', (v) => {
+        let i = 0
+        while (i < STAGES.length - 1 && v >= STAGES[i + 1].from) i++
+        setStage(i)
+      }),
+    [scrollYProgress],
+  )
+  const s = STAGES[stage]
+  return (
+    <section className="watch-section" id="watch" data-theme="watch" ref={ref}>
+      <motion.div
+        className="watch-intro heading"
+        initial="hidden"
+        whileInView="show"
+        viewport={VIEWPORT}
+        variants={stagger}
+      >
+        <Heading kicker="Механизм">Заглянем внутрь часов</Heading>
+      </motion.div>
+      <div className="watch-sticky">
+        <motion.div
+          className="watch-panel"
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ amount: 0.5 }}
+          transition={{ duration: 0.6, ease: EASE }}
+        >
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={stage}
+              initial={{ opacity: 0, y: 16, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -16, filter: 'blur(6px)' }}
+              transition={{ duration: 0.35, ease: EASE }}
+            >
+              <span className="watch-step">
+                Этап {stage + 1} из {STAGES.length}
+              </span>
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
+            </motion.div>
+          </AnimatePresence>
+          <div className="watch-bar">
+            {STAGES.map((st, i) => (
+              <StageBar key={st.title} progress={scrollYProgress} from={st.from} to={STAGES[i + 1]?.from ?? 1} />
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
 function Parallax() {
   const ref = useRef(null)
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
@@ -921,7 +998,9 @@ export default function App() {
   const active = useSectionTheme(mode)
   return (
     <>
-      <Watch />
+      <Suspense fallback={null}>
+        <Watch3D mode={mode} />
+      </Suspense>
       <ScrollProgress />
       <CursorGlow />
       <Nav active={active} mode={mode} onToggleMode={toggleMode} />
@@ -931,6 +1010,7 @@ export default function App() {
         <Marquee />
         <Features />
         <Stats />
+        <WatchSection />
         <Parallax />
         <Tabs />
         <Faq />

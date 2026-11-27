@@ -6,4 +6,6 @@ import { defineConfig } from 'vite'
 export default defineConfig(({ command }) => ({
   plugins: [react()],
   base: command === 'build' ? '/animated-site/' : '/',
+  // three.js вынесен в отдельный ленивый кусок, его размер ожидаем.
+  build: { chunkSizeWarningLimit: 1100 },
 }))
