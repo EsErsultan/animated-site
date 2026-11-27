@@ -980,12 +980,39 @@ function WatchModel({ mode }) {
     const l = u - 1 - page
     const bw = smooth(scroll.build)
     const idle = bw > 0.5 || scroll.after || scroll.t <= 0
+    const sps = PARTS.map((part) => springs.current[part.id] || (springs.current[part.id] = { p: 0, v: 0 }))
+    const targets = PARTS.map((part, i) => {
+      if (idle) return 0
+      return i < page ? 2 : i > page ? 0 : l < 0.1 ? 0 : l < 0.7 ? 1 : 2
+    })
+    // У корпуса «на столе» и «на месте» — одна и та же точка: не гоняем его туда-обратно.
+    const caseI = N - 1
+    if (targets[caseI] === 0 && sps[caseI].p > 1.5) targets[caseI] = 2
+    const seated = (i) => sps[i].p < 0.06 || (!PARTS[i].slot && sps[i].p > 1.94)
+    const inColumn = (i) => sps[i].p < 0.45 || (!PARTS[i].slot && sps[i].p > 1.94)
+    // Очередь, как у часовщика: деталь садится в гнездо, только когда всё, что под ней, уже на месте;
+    // и вынимается, только когда всё, что над ней, уже вынуто. Так детали никогда не проходят друг сквозь друга.
+    for (let i = N - 1; i >= 0; i--) {
+      const sp = sps[i]
+      if (targets[i] === 0 && !seated(i)) {
+        let ok = true
+        for (let j = i + 1; j < N; j++) if (!inColumn(j)) ok = false
+        if (!ok) targets[i] = sp.p > 1.5 ? 2 : 1
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      if (targets[i] > 0 && sps[i].p < 0.6) {
+        let ok = true
+        for (let j = 0; j < i; j++) if (sps[j].p < 0.6) ok = false
+        if (!ok) targets[i] = 0
+      }
+    }
     PARTS.forEach((part, i) => {
-      const sp = springs.current[part.id] || (springs.current[part.id] = { p: 0, v: 0 })
-      let target = i < page ? 2 : i > page ? 0 : l < 0.1 ? 0 : l < 0.7 ? 1 : 2
-      if (idle) target = 0
+      const sp = sps[i]
+      const target = targets[i]
       // Масса на пружине: к витрине — без раскачки, на стол и в гнездо — с отскоком при касании.
-      const omega = 5.2
+      // При сборке «на автомате» (конструктор, уход из секции) — быстрее, чтобы не ждать.
+      const omega = idle ? 6.5 : 5.2
       const zeta = target === 1 ? 0.95 : 0.55
       for (let n = 0; n < 3; n++) {
         const h = ddt / 3
@@ -994,6 +1021,7 @@ function WatchModel({ mode }) {
         sp.p += sp.v * h
       }
     })
+    const away = sps.some((sp, i) => !seated(i))
 
     // Сброс поз деталей перед анимацией механизма.
     for (const part of PARTS) {
@@ -1170,7 +1198,8 @@ function WatchModel({ mode }) {
 
     // Стол часовщика виден только в секции механизма.
     if (table.current) {
-      table.current.material.opacity = scroll.wv * (1 - bw)
+      // Пока детали возвращаются со стола, стол остаётся на виду.
+      table.current.material.opacity = Math.max(scroll.wv * (1 - bw), away ? 0.9 : 0)
       table.current.visible = table.current.material.opacity > 0.01
       table.current.material.color.set(mode === 'light' ? '#d8d2c8' : '#1b1712')
     }
