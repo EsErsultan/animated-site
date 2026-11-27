@@ -32,3 +32,9 @@ npm run dev
 ```
 
 Сборка: `npm run build`, результат в папке `dist`.
+
+## Сайт онлайн
+
+https://esersultan.github.io/animated-site/
+
+Публикуется автоматически через GitHub Actions после каждого push в `main`.
