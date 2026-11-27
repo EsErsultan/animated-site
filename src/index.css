@@ -1,6 +1,14 @@
+/* Регистрируем цвета, чтобы браузер мог плавно их анимировать при смене секции. */
+@property --bg { syntax: '<color>'; inherits: true; initial-value: #07070d; }
+@property --bg-2 { syntax: '<color>'; inherits: true; initial-value: #10101c; }
+@property --a1 { syntax: '<color>'; inherits: true; initial-value: #7c5cff; }
+@property --a2 { syntax: '<color>'; inherits: true; initial-value: #00d4ff; }
+@property --a3 { syntax: '<color>'; inherits: true; initial-value: #ff4fd8; }
+
 :root {
+  transition: --bg 1s ease, --bg-2 1s ease, --a1 1s ease, --a2 1s ease, --a3 1s ease;
   --bg: #07070d;
-  --bg-2: #0f0f1a;
+  --bg-2: #10101c;
   --text: #f2f2f7;
   --muted: #9a9ab0;
   --line: rgba(255, 255, 255, 0.08);
@@ -27,6 +35,7 @@ html {
 }
 
 body {
+  background: var(--bg);
   min-height: 100vh;
   overflow-x: hidden;
   line-height: 1.6;
