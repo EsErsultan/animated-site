@@ -11,6 +11,7 @@ import {
   useTransform,
 } from 'framer-motion'
 import { STAGES } from './watchStages.js'
+import Configurator from './Configurator.jsx'
 import './App.css'
 import './Watch.css'
 
@@ -42,6 +43,11 @@ const SECTIONS = [
     id: 'watch', label: 'Механизм',
     dark: { '--bg': '#080604', '--bg-2': '#15110b', '--a1': '#d4a72c', '--a2': '#7dd3fc', '--a3': '#ef4444' },
     light: { '--bg': '#f8f4ea', '--bg-2': '#ffffff', '--a1': '#b7861b', '--a2': '#0369a1', '--a3': '#dc2626' },
+  },
+  {
+    id: 'build', label: 'Конструктор',
+    dark: { '--bg': '#06080c', '--bg-2': '#10141c', '--a1': '#c9a24a', '--a2': '#9ad1ff', '--a3': '#ff5a5f' },
+    light: { '--bg': '#f3f4f7', '--bg-2': '#ffffff', '--a1': '#a67c1f', '--a2': '#0b6bcb', '--a3': '#e5484d' },
   },
   {
     id: 'parallax', label: 'Параллакс',
@@ -1011,6 +1017,7 @@ export default function App() {
         <Features />
         <Stats />
         <WatchSection />
+        <Configurator />
         <Parallax />
         <Tabs />
         <Faq />

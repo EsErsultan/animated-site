@@ -99,3 +99,204 @@
     padding-left: 6vw;
   }
 }
+
+/* ---------- Конструктор часов ---------- */
+
+.build-section {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 110px 24px 60px;
+}
+
+.build-drag {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.build-drag:active {
+  cursor: grabbing;
+}
+
+.build-drag-hint {
+  position: absolute;
+  right: 6vw;
+  bottom: 40px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-2) 60%, transparent);
+  backdrop-filter: blur(8px);
+  animation: hint-bob 2.4s ease-in-out infinite;
+}
+
+@keyframes hint-bob {
+  50% {
+    transform: translateX(-8px);
+  }
+}
+
+.cfg-panel {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-2) 72%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.6);
+}
+
+.cfg-panel h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.1;
+  margin: 6px 0 8px;
+}
+
+.cfg-lead {
+  color: var(--muted);
+  margin-bottom: 22px;
+}
+
+.cfg-group {
+  display: block;
+  margin-bottom: 18px;
+}
+
+.cfg-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cfg-group-head em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--a2);
+  font-size: 13px;
+}
+
+.cfg-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cfg-swatch {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.cfg-dot {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 4px 10px -4px rgba(0, 0, 0, 0.6);
+}
+
+.cfg-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--a2);
+  box-shadow: 0 0 16px -2px var(--a2);
+}
+
+.cfg-text input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  color: var(--text);
+  font: 700 16px/1.2 Inter, system-ui, sans-serif;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.cfg-text input:focus {
+  border-color: var(--a2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--a2) 25%, transparent);
+}
+
+.cfg-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.cfg-btn {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 50%, transparent);
+  font-weight: 600;
+  font-size: 14px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.cfg-btn:hover {
+  border-color: var(--a2);
+}
+
+.cfg-btn--primary {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--a1), color-mix(in srgb, var(--a1) 50%, var(--a3)));
+}
+
+.cfg-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  translate: -50% 0;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 14px;
+  z-index: 60;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+@media (min-width: 900px) {
+  .build-section {
+    padding-left: 6vw;
+  }
+}
+
+@media (max-width: 899px) {
+  .build-section {
+    align-items: flex-end;
+    padding-top: 62vh;
+  }
+
+  .build-drag {
+    bottom: auto;
+    height: 62vh;
+  }
+
+  .build-drag-hint {
+    right: 50%;
+    translate: 50% 0;
+    bottom: 16px;
+  }
+}

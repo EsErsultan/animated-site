@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { findOption, useWatchConfig, watchStore } from './watchConfig.js'
 
 /*
   Процедурная 3D-модель механических часов на three.js.
@@ -15,7 +16,8 @@ const TAU = Math.PI * 2
 
 /* ---------- Состояние прокрутки (без перерисовок React) ---------- */
 
-const scroll = { t: 0, opacity: 0.3, px: 0, py: 0 }
+const scroll = { t: 0, opacity: 0.3, px: 0, py: 0, build: 0 }
+const drag = watchStore.drag
 
 function readScroll() {
   const el = document.getElementById('watch')
@@ -26,7 +28,16 @@ function readScroll() {
   if (r.top > 0) scroll.opacity = THREE.MathUtils.lerp(0.3, 1, THREE.MathUtils.clamp(1 - r.top / vh, 0, 1))
   else if (r.bottom < vh) scroll.opacity = THREE.MathUtils.lerp(0.22, 1, THREE.MathUtils.clamp(r.bottom / vh, 0, 1))
   else scroll.opacity = 1
+
+  // Секция конструктора: часы собираются и выходят на передний план.
+  const b = document.getElementById('build')
+  if (b) {
+    const rb = b.getBoundingClientRect()
+    scroll.build = THREE.MathUtils.clamp(Math.min((vh * 0.85 - rb.top) / (vh * 0.5), (rb.bottom - vh * 0.15) / (vh * 0.5)), 0, 1)
+    scroll.opacity = Math.max(scroll.opacity, THREE.MathUtils.lerp(0.22, 1, scroll.build))
+  }
 }
+
 
 /* ---------- Ключевые кадры камеры и разборки ---------- */
 
@@ -211,7 +222,7 @@ function engravingTexture(lines, w = 1024, h = 256) {
   return tex
 }
 
-function drawDial(g, s, colors, day) {
+function drawDial(g, s, colors, day, text = 'PULSE') {
   const c = s / 2
   g.clearRect(0, 0, s, s)
   // Основа
@@ -331,7 +342,7 @@ function drawDial(g, s, colors, day) {
   g.fillStyle = colors.accent
   g.font = `800 ${s * 0.055}px Inter, system-ui, sans-serif`
   if ('letterSpacing' in g) g.letterSpacing = `${s * 0.012}px`
-  g.fillText('PULSE', c, c * 0.6)
+  g.fillText(text || ' ', c, c * 0.6)
   if ('letterSpacing' in g) g.letterSpacing = `${s * 0.004}px`
   g.fillStyle = colors.ink
   g.font = `500 ${s * 0.02}px Inter, system-ui, sans-serif`
@@ -526,6 +537,9 @@ function useMaterials() {
     const leatherBump = leatherTexture()
     const leather = new THREE.MeshStandardMaterial({ color: '#3b2416', roughness: 0.75, metalness: 0, bumpMap: leatherBump, bumpScale: 1.2 })
     const stitch = new THREE.MeshStandardMaterial({ color: '#efe6d2', roughness: 0.8 })
+    const rubber = new THREE.MeshPhysicalMaterial({ color: '#1b1b1d', roughness: 0.85, metalness: 0, sheen: 0.4 })
+    const braceletPolished = casePolished.clone()
+    const braceletBrushed = caseBrushed.clone()
     // Стекло без transmission: иначе прозрачный циферблат за ним не виден.
     const crystal = new THREE.MeshPhysicalMaterial({
       color: '#eaf4ff', roughness: 0, metalness: 0, transparent: true, opacity: 0.14, clearcoat: 1,
@@ -568,7 +582,7 @@ function useMaterials() {
     Object.values(bridgeSet).forEach((mt) => (mt.transparent = true))
     return {
       steel, polished, gold, goldPolished, goldSoleil, blued, ruby, plate, sunburst, casePolished, caseBrushed,
-      leather, stitch, crystal, dial, appliedGold, lume, handGold, handSec, bridgeSet,
+      leather, stitch, rubber, braceletPolished, braceletBrushed, crystal, dial, appliedGold, lume, handGold, handSec, bridgeSet,
     }
   }, [gl])
 }
@@ -626,7 +640,7 @@ function Stitches({ geo, mat, segments }) {
   return <instancedMesh ref={ref} args={[geo, mat, 200]} />
 }
 
-function Strap({ m, side }) {
+function Strap({ m, side, mat, stitches = true }) {
   const g = useMemo(() => {
     const seg = extrude(roundedRect(1.12, 1.55, 0.12), 0.12, 0.035, 16)
     const end = extrude(roundedRect(1.02, 1.6, 0.4), 0.11, 0.03, 16)
@@ -643,12 +657,57 @@ function Strap({ m, side }) {
   )
   return (
     <group position={[0, s * 2.85, -0.05]} rotation={[s * -0.18, 0, 0]}>
-      <mesh geometry={g.seg} material={m.leather} position={[0, 0, -0.06]} />
-      <Stitches geo={g.stitch} mat={m.stitch} segments={stitchRows} />
+      <mesh geometry={g.seg} material={mat} position={[0, 0, -0.06]} />
+      {stitches && <Stitches geo={g.stitch} mat={m.stitch} segments={stitchRows} />}
       <group position={[0, s * 1.55, -0.28]} rotation={[s * -0.35, 0, 0]}>
-        <mesh geometry={g.end} material={m.leather} position={[0, 0, -0.05]} />
-        <Stitches geo={g.stitch} mat={m.stitch} segments={stitchRows.map((r) => ({ ...r, y: r.y * 0.92 }))} />
+        <mesh geometry={g.end} material={mat} position={[0, 0, -0.05]} />
+        {stitches && <Stitches geo={g.stitch} mat={m.stitch} segments={stitchRows.map((r) => ({ ...r, y: r.y * 0.92 }))} />}
       </group>
+    </group>
+  )
+}
+
+// Металлический браслет: ряды звеньев, центральное полированное, крайние шлифованные.
+function Bracelet({ m, side }) {
+  const center = useRef()
+  const outer = useRef()
+  const geo = useMemo(
+    () => ({
+      center: extrude(roundedRect(0.3, 0.2, 0.05), 0.11, 0.025, 8),
+      outer: extrude(roundedRect(0.36, 0.2, 0.05), 0.12, 0.025, 8),
+    }),
+    [],
+  )
+  useEffect(() => {
+    const m4 = new THREE.Matrix4()
+    const q = new THREE.Quaternion()
+    const e = new THREE.Euler()
+    const one = new THREE.Vector3(1, 1, 1)
+    const p = new THREE.Vector3()
+    let ci = 0
+    let oi = 0
+    for (let j = 0; j < 13; j++) {
+      const d = j * 0.215
+      const y = side * (2.32 + d)
+      const z = -0.1 - d * d * 0.07
+      e.set(side * -(0.15 + d * 0.16), 0, 0)
+      q.setFromEuler(e)
+      p.set(0, y, z)
+      center.current.setMatrixAt(ci++, m4.compose(p, q, one))
+      for (const x of [-0.355, 0.355]) {
+        p.set(x, y, z - 0.005)
+        outer.current.setMatrixAt(oi++, m4.compose(p, q, one))
+      }
+    }
+    center.current.count = ci
+    outer.current.count = oi
+    center.current.instanceMatrix.needsUpdate = true
+    outer.current.instanceMatrix.needsUpdate = true
+  }, [side])
+  return (
+    <group>
+      <instancedMesh ref={center} args={[geo.center, m.braceletPolished, 13]} castShadow receiveShadow />
+      <instancedMesh ref={outer} args={[geo.outer, m.braceletBrushed, 26]} castShadow receiveShadow />
     </group>
   )
 }
@@ -657,6 +716,33 @@ function Strap({ m, side }) {
 
 function WatchModel({ mode }) {
   const m = useMaterials()
+  const cfg = useWatchConfig()
+  const strap = findOption('strap', cfg.strap)
+
+  // Конструктор: металл корпуса, стрелок и цвет ремешка меняются прямо в материалах.
+  useEffect(() => {
+    const c = findOption('case', cfg.case)
+    for (const mat of [m.casePolished, m.braceletPolished]) {
+      mat.color.set(c.color)
+      mat.roughness = c.roughness
+    }
+    for (const mat of [m.caseBrushed, m.braceletBrushed]) {
+      mat.color.set(c.color).multiplyScalar(0.93)
+      mat.roughness = c.roughness + 0.25
+    }
+  }, [cfg.case, m])
+  useEffect(() => {
+    const h = findOption('hands', cfg.hands)
+    for (const mat of [m.handGold, m.appliedGold]) {
+      mat.color.set(h.color)
+      mat.metalness = h.metalness
+      mat.roughness = h.roughness
+    }
+  }, [cfg.hands, m])
+  useEffect(() => {
+    if (strap.type === 'leather') m.leather.color.set(strap.color)
+    if (strap.type === 'rubber') m.rubber.color.set(strap.color)
+  }, [strap, m])
   const root = useRef()
   const parts = useRef({})
   const reg = (name) => (el) => {
@@ -668,6 +754,9 @@ function WatchModel({ mode }) {
   const rimA = useRef()
   const rimB = useRef()
   const colorClock = useRef(0)
+  useEffect(() => {
+    colorClock.current = 0
+  }, [cfg])
   const lastDialKey = useRef('')
 
   // Циферблат 2048×2048 на canvas, перерисовывается при смене палитры и даты.
@@ -695,7 +784,7 @@ function WatchModel({ mode }) {
         o.receiveShadow = true
       }
     })
-  }, [])
+  }, [strap.type])
 
   /* Геометрии */
   const g = useMemo(() => {
@@ -813,6 +902,22 @@ function WatchModel({ mode }) {
   useFrame((st, dt) => {
     readScroll()
     const target = sampleKeys(scroll.t)
+    const aspect = st.size.width / st.size.height
+    // В конструкторе часы собраны и стоят сбоку от панели (снизу — на телефоне).
+    const bw = smooth(scroll.build)
+    if (bw > 0) {
+      const asm = KEYS[0]
+      // Подбираем дистанцию так, чтобы часы помещались в правые ~45% экрана.
+      const D = Math.max(8.6, 13 / aspect)
+      const off = -0.4 * D * Math.tan((17.5 * Math.PI) / 180) * aspect
+      const look0 = aspect >= 1 ? [off, 0, 0] : [0, -2.4, 0]
+      const cam0 = aspect >= 1 ? [off, -0.4, D] : [0, -2.6, 8.4]
+      const L = (a, b2) => a + (b2 - a) * bw
+      target.cam = target.cam.map((v, i) => L(v, cam0[i]))
+      target.look = target.look.map((v, i) => L(v, look0[i]))
+      for (const key of ['fly', 'bridge', 'spread', 'drop']) target[key] = L(target[key], asm[key])
+      target.bop = L(target.bop, 1)
+    }
     const s = state.current
     const k = 1 - Math.exp(-dt * 4)
     for (const key of ['fly', 'bridge', 'bop', 'spread', 'drop']) s[key] += (target[key] - s[key]) * k
@@ -822,7 +927,6 @@ function WatchModel({ mode }) {
     }
 
     // Камера: на узких экранах отъезжаем дальше.
-    const aspect = st.size.width / st.size.height
     const f = aspect < 1 ? 1 + (1 - aspect) * 1.3 : 1
     look.current.set(...s.look)
     cam.position.set(
@@ -834,11 +938,16 @@ function WatchModel({ mode }) {
 
     // Лёгкий наклон за мышью (слабее при макросъёмке).
     const par = 1 - smooth(THREE.MathUtils.clamp(scroll.t / 0.5, 0, 1)) * 0.8
-    root.current.rotation.x += (scroll.py * 0.25 * par - root.current.rotation.x) * k
-    root.current.rotation.y += (scroll.px * 0.35 * par - root.current.rotation.y) * k
+    const time = st.clock.elapsedTime
+    // В конструкторе — поворот мышью/пальцем и медленная «витрина», пока не трогают.
+    if (!drag.dragging) drag.x += dt * 0.12 * bw
+    const rx = THREE.MathUtils.lerp(scroll.py * 0.25 * par, 0.18 + drag.y, bw)
+    const ry = THREE.MathUtils.lerp(scroll.px * 0.35 * par, Math.sin(drag.x) * 0.9, bw)
+    const kr = drag.dragging ? 1 - Math.exp(-dt * 14) : k
+    root.current.rotation.x += (rx - root.current.rotation.x) * kr
+    root.current.rotation.y += (ry - root.current.rotation.y) * kr
 
     const P_ = parts.current
-    const time = st.clock.elapsedTime
 
     // Стрелки — реальное время, секундная «метёт» 8 шагами в секунду.
     const now = new Date()
@@ -922,21 +1031,28 @@ function WatchModel({ mode }) {
       if (a3) m.handSec.color.set(a3)
       m.lume.emissiveIntensity = mode === 'dark' ? 0.55 : 0
       const day = now.getDate()
-      const key = [a2, bg2, ink, mode, day].join('|')
+      const cur = watchStore.get()
+      const fixed = findOption('dial', cur.dial).color
+      const key = [a2, bg2, ink, mode, day, cur.dial, cur.text, cur.hands].join('|')
       if (key !== lastDialKey.current && bg2) {
         lastDialKey.current = key
-        const dial = new THREE.Color(bg2)
-        const dialLight = dial.clone().lerp(new THREE.Color(a1 || '#888'), 0.18)
+        const dial = new THREE.Color(fixed || bg2)
+        const dialLight = dial.clone().lerp(new THREE.Color(fixed ? '#ffffff' : a1 || '#888'), fixed ? 0.12 : 0.18)
+        const hsl = {}
+        dial.getHSL(hsl)
+        const lightDial = hsl.l > 0.55
+        const handColor = findOption('hands', cur.hands).color
         drawDial(
           dialCanvas.getContext('2d'),
           2048,
           {
             dial: `#${dial.getHexString()}`,
             dialLight: `#${dialLight.getHexString()}`,
-            accent: a2 || '#7dd3fc',
-            ink: ink || '#eee',
+            accent: fixed ? (lightDial ? '#1d2b4a' : handColor) : a2 || '#7dd3fc',
+            ink: fixed ? (lightDial ? '#1a1a1c' : '#eef0f2') : ink || '#eee',
           },
           day,
+          cur.text,
         )
         dialTex.needsUpdate = true
       }
@@ -972,8 +1088,17 @@ function WatchModel({ mode }) {
           {[[-0.72, 1.98], [0.72, 1.98], [-0.72, -1.98], [0.72, -1.98]].map(([x, y]) => (
             <mesh key={`${x}${y}`} geometry={g.lug} material={m.casePolished} position={[x, y, -0.12]} rotation={[y > 0 ? -0.12 : 0.12, 0, 0]} />
           ))}
-          <Strap m={m} side={1} />
-          <Strap m={m} side={-1} />
+          {strap.type === 'bracelet' ? (
+            <>
+              <Bracelet m={m} side={1} />
+              <Bracelet m={m} side={-1} />
+            </>
+          ) : (
+            <>
+              <Strap m={m} side={1} mat={strap.type === 'rubber' ? m.rubber : m.leather} stitches={strap.type === 'leather'} />
+              <Strap m={m} side={-1} mat={strap.type === 'rubber' ? m.rubber : m.leather} stitches={strap.type === 'leather'} />
+            </>
+          )}
           <mesh geometry={g.back} material={m.caseBrushed} position={[0, 0, -0.33]} />
         </group>
         <group ref={reg('crown')} position={[2.2, 0, 0.04]}>
@@ -1136,6 +1261,21 @@ function WatchModel({ mode }) {
   )
 }
 
+// Снимок кадра для кнопки «Скачать PNG».
+function CaptureBridge() {
+  const { gl, scene, camera } = useThree()
+  useEffect(() => {
+    watchStore.capture = () => {
+      gl.render(scene, camera)
+      return gl.domElement.toDataURL('image/png')
+    }
+    return () => {
+      watchStore.capture = null
+    }
+  }, [gl, scene, camera])
+  return null
+}
+
 export default function Watch3D({ mode }) {
   const stage = useRef()
 
@@ -1169,6 +1309,7 @@ export default function Watch3D({ mode }) {
       >
         <Environment mode={mode} />
         <WatchModel mode={mode} />
+        <CaptureBridge />
       </Canvas>
     </div>
   )
