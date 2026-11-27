@@ -296,6 +296,7 @@
 }
 
 .btn--primary {
+  color: #fff;
   background: linear-gradient(135deg, var(--a1), var(--a3));
   box-shadow: 0 10px 40px -10px var(--a1);
 }
@@ -877,4 +878,56 @@
   .dots {
     display: none;
   }
+}
+
+/* ---------- Слои над часами ---------- */
+
+main,
+.footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Кнопки в шапке ---------- */
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--a2);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-2) 60%, transparent);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.theme-toggle:hover {
+  border-color: var(--a2);
+  box-shadow: 0 0 24px -4px var(--a2);
+}
+
+/* ---------- Подстройки светлой темы ---------- */
+
+:root[data-mode='light'] .cursor-glow {
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+
+:root[data-mode='light'] .blob {
+  opacity: 0.3;
+}
+
+:root[data-mode='light'] .card,
+:root[data-mode='light'] .stat,
+:root[data-mode='light'] .tab-panel,
+:root[data-mode='light'] .faq-item {
+  box-shadow: 0 10px 30px -18px rgba(20, 18, 40, 0.35);
 }

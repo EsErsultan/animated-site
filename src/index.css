@@ -4,9 +4,14 @@
 @property --a1 { syntax: '<color>'; inherits: true; initial-value: #7c5cff; }
 @property --a2 { syntax: '<color>'; inherits: true; initial-value: #00d4ff; }
 @property --a3 { syntax: '<color>'; inherits: true; initial-value: #ff4fd8; }
+@property --text { syntax: '<color>'; inherits: true; initial-value: #f2f2f7; }
+@property --muted { syntax: '<color>'; inherits: true; initial-value: #9a9ab0; }
+@property --line { syntax: '<color>'; inherits: true; initial-value: rgba(255, 255, 255, 0.08); }
 
 :root {
-  transition: --bg 1s ease, --bg-2 1s ease, --a1 1s ease, --a2 1s ease, --a3 1s ease;
+  transition: --bg 1s ease, --bg-2 1s ease, --a1 1s ease, --a2 1s ease, --a3 1s ease, --text 0.6s ease,
+    --muted 0.6s ease, --line 0.6s ease;
+  color-scheme: dark;
   --bg: #07070d;
   --bg-2: #10101c;
   --text: #f2f2f7;
@@ -20,6 +25,31 @@
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Светлая тема: свои цвета текста и линий, палитры секций задаёт App.jsx */
+:root[data-mode='light'] {
+  --bg: #f6f4ff;
+  --bg-2: #ffffff;
+  --text: #15131f;
+  --muted: #5b586e;
+  --line: rgba(20, 18, 40, 0.1);
+  color-scheme: light;
+}
+
+/* Во время переключения темы цвета меняются мгновенно, а раскрытие делает View Transition */
+html.theme-switching {
+  transition: none !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
 }
 
 *,

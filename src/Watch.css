@@ -1,0 +1,273 @@
+/* ---------- Механические часы на фоне ---------- */
+
+.watch-stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+  perspective: 1600px;
+}
+
+.watch {
+  position: relative;
+  width: min(78vmin, 700px);
+  aspect-ratio: 1;
+  transform-style: preserve-3d;
+}
+
+.watch-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.watch-layer svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.watch-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  translate: -50% 0;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Основание с «женевскими кругами» (перляж) */
+.plate {
+  fill: var(--bg-2);
+  stroke: color-mix(in srgb, var(--a2) 35%, transparent);
+  stroke-width: 1.5;
+}
+
+.perlage {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text) 10%, transparent);
+  stroke-width: 0.6;
+}
+
+.screw {
+  fill: color-mix(in srgb, var(--a2) 30%, #8a919c);
+}
+
+.screw-slot {
+  stroke: var(--bg);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* Шестерни */
+.gear {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: gear-spin;
+  animation-iteration-count: infinite;
+}
+
+.gear--gold {
+  fill: color-mix(in srgb, var(--a1) 45%, #d4a72c);
+}
+
+.gear--steel {
+  fill: color-mix(in srgb, var(--a2) 30%, #a7aeb8);
+}
+
+.pinion {
+  animation: none;
+}
+
+@keyframes gear-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Баланс и спираль */
+.balance {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: balance-swing 0.42s ease-in-out infinite alternate;
+}
+
+@keyframes balance-swing {
+  from {
+    transform: rotate(-150deg);
+  }
+  to {
+    transform: rotate(150deg);
+  }
+}
+
+.balance-ring {
+  fill: none;
+  stroke: color-mix(in srgb, var(--a1) 45%, #d4a72c);
+  stroke-width: 6;
+}
+
+.balance-ring--inner {
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+
+.balance-spoke {
+  stroke: color-mix(in srgb, var(--a1) 45%, #d4a72c);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.balance-screw {
+  fill: color-mix(in srgb, var(--a2) 40%, #c7ccd3);
+}
+
+.hairspring {
+  fill: none;
+  stroke: color-mix(in srgb, var(--a2) 70%, #ffffff);
+  stroke-width: 0.9;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hairspring-breathe 0.42s ease-in-out infinite alternate;
+}
+
+@keyframes hairspring-breathe {
+  from {
+    transform: rotate(-25deg) scale(0.92);
+  }
+  to {
+    transform: rotate(25deg) scale(1.04);
+  }
+}
+
+/* Мосты и камни */
+.bridge-edge {
+  stroke: color-mix(in srgb, var(--a2) 55%, transparent);
+  stroke-width: 34;
+  stroke-linecap: round;
+}
+
+.bridge {
+  stroke: color-mix(in srgb, var(--bg-2) 88%, var(--a1));
+  stroke-width: 30;
+  stroke-linecap: round;
+}
+
+.jewel-setting {
+  fill: color-mix(in srgb, var(--a1) 40%, #d4a72c);
+}
+
+.jewel {
+  fill: #d4145a;
+}
+
+.jewel-shine {
+  fill: rgba(255, 255, 255, 0.8);
+}
+
+/* Корпус */
+.case-ring {
+  fill: none;
+  stroke: color-mix(in srgb, var(--a1) 35%, #b8bec7);
+  stroke-width: 16;
+}
+
+.case-inner {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text) 25%, transparent);
+  stroke-width: 1;
+}
+
+.crown {
+  fill: color-mix(in srgb, var(--a1) 35%, #b8bec7);
+}
+
+.crown-grip {
+  stroke: var(--bg);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+/* Циферблат */
+.dial {
+  fill: var(--bg-2);
+  stroke: var(--line);
+}
+
+.dial-track {
+  fill: none;
+  stroke: var(--line);
+}
+
+.dial-tick {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+
+.dial-index {
+  stroke: var(--text);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.dial-num {
+  fill: var(--text);
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.dial-brand {
+  fill: var(--a2);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+}
+
+.dial-sub {
+  fill: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+
+/* Стрелки */
+.hand {
+  fill: var(--text);
+}
+
+.hand-sec {
+  stroke: var(--a3);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.hand-sec-dot,
+.hand-cap {
+  fill: var(--a3);
+}
+
+.hand-pin {
+  fill: var(--bg);
+}
+
+/* Стекло */
+.crystal {
+  fill: color-mix(in srgb, var(--a2) 4%, transparent);
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.5;
+}
+
+.crystal-shine {
+  fill: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 720px) {
+  .watch {
+    width: 92vmin;
+  }
+}

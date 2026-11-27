@@ -5,6 +5,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Тестовый сайт с анимациями на React" />
+    <script>
+      // Ставим тему до отрисовки, чтобы не было вспышки
+      try {
+        var m = localStorage.getItem('mode')
+        if (m !== 'light' && m !== 'dark') m = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+        document.documentElement.dataset.mode = m
+      } catch (e) {}
+    </script>
     <title>Pulse — тестовый сайт с анимациями</title>
   </head>
   <body>

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import {
   motion,
   AnimatePresence,
@@ -9,6 +10,7 @@ import {
   useSpring,
   useTransform,
 } from 'framer-motion'
+import Watch from './Watch.jsx'
 import './App.css'
 
 /* ---------- Данные ---------- */
@@ -17,13 +19,41 @@ const YEAR = new Date().getFullYear()
 
 // Каждая секция — своя палитра. При прокрутке цвета плавно перетекают.
 const SECTIONS = [
-  { id: 'top', label: 'Главная', vars: { '--bg': '#07070d', '--bg-2': '#10101c', '--a1': '#7c5cff', '--a2': '#00d4ff', '--a3': '#ff4fd8' } },
-  { id: 's0', label: 'Возможности', vars: { '--bg': '#03110c', '--bg-2': '#082019', '--a1': '#10b981', '--a2': '#a3e635', '--a3': '#06b6d4' } },
-  { id: 's1', label: 'Цифры', vars: { '--bg': '#140904', '--bg-2': '#22120a', '--a1': '#ff7a18', '--a2': '#ffd166', '--a3': '#ff3d71' } },
-  { id: 'parallax', label: 'Параллакс', vars: { '--bg': '#040a1a', '--bg-2': '#0a1530', '--a1': '#3b82f6', '--a2': '#22d3ee', '--a3': '#818cf8' } },
-  { id: 's2', label: 'Стек', vars: { '--bg': '#14040c', '--bg-2': '#240a18', '--a1': '#ff4f8b', '--a2': '#ffb3c7', '--a3': '#c026d3' } },
-  { id: 's3', label: 'Вопросы', vars: { '--bg': '#0f0c03', '--bg-2': '#1d1808', '--a1': '#f59e0b', '--a2': '#2dd4bf', '--a3': '#fb7185' } },
-  { id: 'cta', label: 'Частицы', vars: { '--bg': '#0a0614', '--bg-2': '#160e28', '--a1': '#8b5cf6', '--a2': '#22d3ee', '--a3': '#f472b6' } },
+  {
+    id: 'top', label: 'Главная',
+    dark: { '--bg': '#07070d', '--bg-2': '#10101c', '--a1': '#7c5cff', '--a2': '#00d4ff', '--a3': '#ff4fd8' },
+    light: { '--bg': '#f6f4ff', '--bg-2': '#ffffff', '--a1': '#6d4aff', '--a2': '#0891b2', '--a3': '#db2777' },
+  },
+  {
+    id: 's0', label: 'Возможности',
+    dark: { '--bg': '#03110c', '--bg-2': '#082019', '--a1': '#10b981', '--a2': '#a3e635', '--a3': '#06b6d4' },
+    light: { '--bg': '#ecfbf4', '--bg-2': '#ffffff', '--a1': '#059669', '--a2': '#4d7c0f', '--a3': '#0891b2' },
+  },
+  {
+    id: 's1', label: 'Цифры',
+    dark: { '--bg': '#140904', '--bg-2': '#22120a', '--a1': '#ff7a18', '--a2': '#ffd166', '--a3': '#ff3d71' },
+    light: { '--bg': '#fff4ea', '--bg-2': '#ffffff', '--a1': '#ea580c', '--a2': '#b45309', '--a3': '#e11d48' },
+  },
+  {
+    id: 'parallax', label: 'Параллакс',
+    dark: { '--bg': '#040a1a', '--bg-2': '#0a1530', '--a1': '#3b82f6', '--a2': '#22d3ee', '--a3': '#818cf8' },
+    light: { '--bg': '#edf3ff', '--bg-2': '#ffffff', '--a1': '#2563eb', '--a2': '#0e7490', '--a3': '#6366f1' },
+  },
+  {
+    id: 's2', label: 'Стек',
+    dark: { '--bg': '#14040c', '--bg-2': '#240a18', '--a1': '#ff4f8b', '--a2': '#ffb3c7', '--a3': '#c026d3' },
+    light: { '--bg': '#fff0f5', '--bg-2': '#ffffff', '--a1': '#e11d74', '--a2': '#be185d', '--a3': '#a21caf' },
+  },
+  {
+    id: 's3', label: 'Вопросы',
+    dark: { '--bg': '#0f0c03', '--bg-2': '#1d1808', '--a1': '#f59e0b', '--a2': '#2dd4bf', '--a3': '#fb7185' },
+    light: { '--bg': '#fffaea', '--bg-2': '#ffffff', '--a1': '#d97706', '--a2': '#0f766e', '--a3': '#e11d48' },
+  },
+  {
+    id: 'cta', label: 'Частицы',
+    dark: { '--bg': '#0a0614', '--bg-2': '#160e28', '--a1': '#8b5cf6', '--a2': '#22d3ee', '--a3': '#f472b6' },
+    light: { '--bg': '#f4f1ff', '--bg-2': '#ffffff', '--a1': '#7c3aed', '--a2': '#0891b2', '--a3': '#db2777' },
+  },
 ]
 
 const WORDS = ['движение', 'эмоции', 'скорость', 'магию']
@@ -141,7 +171,7 @@ function Heading({ kicker, children }) {
 
 /* ---------- Цвет секций ---------- */
 
-function useSectionTheme() {
+function useSectionTheme(mode) {
   const [active, setActive] = useState(SECTIONS[0].id)
 
   useEffect(() => {
@@ -156,11 +186,13 @@ function useSectionTheme() {
     return () => io.disconnect()
   }, [])
 
-  useEffect(() => {
-    const theme = SECTIONS.find((s) => s.id === active)
-    const root = document.documentElement.style
-    for (const [k, v] of Object.entries(theme.vars)) root.setProperty(k, v)
-  }, [active])
+  // Layout-эффект: цвета меняются в том же кадре, что и тема (важно для анимации переключения).
+  useLayoutEffect(() => {
+    const vars = SECTIONS.find((s) => s.id === active)[mode]
+    const root = document.documentElement
+    root.dataset.mode = mode
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v)
+  }, [active, mode])
 
   return active
 }
@@ -473,7 +505,7 @@ function Menu({ active, onNavigate }) {
             <a
               href={`#${s.id}`}
               className={`menu-link ${active === s.id ? 'menu-link--active' : ''}`}
-              style={{ '--c1': s.vars['--a1'], '--c2': s.vars['--a2'] }}
+              style={{ '--c1': s.dark['--a1'], '--c2': s.dark['--a2'] }}
               onClick={(e) => {
                 e.preventDefault()
                 onNavigate(s.id)
@@ -498,7 +530,88 @@ function Menu({ active, onNavigate }) {
   )
 }
 
-function Nav({ active }) {
+/* ---------- Светлая и тёмная тема ---------- */
+
+function getInitialMode() {
+  const saved = localStorage.getItem('mode')
+  if (saved === 'light' || saved === 'dark') return saved
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
+function useMode() {
+  const [mode, setMode] = useState(getInitialMode)
+  useEffect(() => localStorage.setItem('mode', mode), [mode])
+
+  // Новая тема раскрывается кругом из точки клика (View Transitions API).
+  const toggle = (e) => {
+    const next = mode === 'dark' ? 'light' : 'dark'
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!document.startViewTransition || reduce) {
+      setMode(next)
+      return
+    }
+    const x = e.clientX
+    const y = e.clientY
+    const root = document.documentElement
+    root.classList.add('theme-switching')
+    const t = document.startViewTransition(() => flushSync(() => setMode(next)))
+    t.ready.then(() => {
+      const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+      root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 750, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', pseudoElement: '::view-transition-new(root)' },
+      )
+    })
+    t.finished.finally(() => root.classList.remove('theme-switching'))
+  }
+
+  return [mode, toggle]
+}
+
+function ThemeToggle({ mode, onToggle }) {
+  const dark = mode === 'dark'
+  const spring = { type: 'spring', stiffness: 260, damping: 18 }
+  return (
+    <motion.button
+      className="theme-toggle"
+      onClick={onToggle}
+      aria-label={dark ? 'Включить светлую тему' : 'Включить тёмную тему'}
+      title={dark ? 'Светлая тема' : 'Тёмная тема'}
+      whileTap={{ scale: 0.85 }}
+    >
+      <motion.svg viewBox="0 0 24 24" width="22" height="22" animate={{ rotate: dark ? 40 : 90 }} transition={spring}>
+        <mask id="moon-mask">
+          <rect x="0" y="0" width="24" height="24" fill="white" />
+          <motion.circle r="9" fill="black" animate={{ cx: dark ? 17 : 32, cy: dark ? 6 : -6 }} transition={spring} />
+        </mask>
+        <motion.circle cx="12" cy="12" fill="currentColor" mask="url(#moon-mask)" animate={{ r: dark ? 9 : 5 }} transition={spring} />
+        <motion.g
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          animate={{ opacity: dark ? 0 : 1, scale: dark ? 0.4 : 1 }}
+          style={{ originX: '12px', originY: '12px' }}
+          transition={spring}
+        >
+          {Array.from({ length: 8 }, (_, i) => {
+            const a = (i * Math.PI) / 4
+            return (
+              <line
+                key={i}
+                x1={12 + Math.cos(a) * 8}
+                y1={12 + Math.sin(a) * 8}
+                x2={12 + Math.cos(a) * 10.5}
+                y2={12 + Math.sin(a) * 10.5}
+              />
+            )
+          })}
+        </motion.g>
+      </motion.svg>
+    </motion.button>
+  )
+}
+
+function Nav({ active, mode, onToggleMode }) {
   const { scrollY } = useScroll()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
@@ -542,7 +655,10 @@ function Nav({ active }) {
           />
           Pulse
         </a>
-        <Burger open={open} onClick={() => setOpen((v) => !v)} />
+        <div className="nav-actions">
+          <ThemeToggle mode={mode} onToggle={onToggleMode} />
+          <Burger open={open} onClick={() => setOpen((v) => !v)} />
+        </div>
       </motion.header>
       <AnimatePresence>{open && <Menu active={active} onNavigate={navigate} />}</AnimatePresence>
     </>
@@ -801,12 +917,14 @@ function Cta() {
 }
 
 export default function App() {
-  const active = useSectionTheme()
+  const [mode, toggleMode] = useMode()
+  const active = useSectionTheme(mode)
   return (
     <>
+      <Watch />
       <ScrollProgress />
       <CursorGlow />
-      <Nav active={active} />
+      <Nav active={active} mode={mode} onToggleMode={toggleMode} />
       <SectionDots active={active} />
       <main>
         <Hero />
