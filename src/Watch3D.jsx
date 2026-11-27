@@ -25,8 +25,11 @@ function readScroll() {
   const r = el.getBoundingClientRect()
   const vh = window.innerHeight
   scroll.t = THREE.MathUtils.clamp(-r.top / Math.max(1, r.height - vh), 0, 1)
-  if (r.top > 0) scroll.opacity = THREE.MathUtils.lerp(0.3, 1, THREE.MathUtils.clamp(1 - r.top / vh, 0, 1))
-  else if (r.bottom < vh) scroll.opacity = THREE.MathUtils.lerp(0.22, 1, THREE.MathUtils.clamp(r.bottom / vh, 0, 1))
+  // На телефоне фоновые часы крупнее относительно текста — делаем их тише.
+  const base = window.innerWidth < 640 ? 0.14 : 0.3
+  const after = window.innerWidth < 640 ? 0.12 : 0.22
+  if (r.top > 0) scroll.opacity = THREE.MathUtils.lerp(base, 1, THREE.MathUtils.clamp(1 - r.top / vh, 0, 1))
+  else if (r.bottom < vh) scroll.opacity = THREE.MathUtils.lerp(after, 1, THREE.MathUtils.clamp(r.bottom / vh, 0, 1))
   else scroll.opacity = 1
 
   // Секция конструктора: часы собираются и выходят на передний план.
@@ -34,7 +37,7 @@ function readScroll() {
   if (b) {
     const rb = b.getBoundingClientRect()
     scroll.build = THREE.MathUtils.clamp(Math.min((vh * 0.85 - rb.top) / (vh * 0.5), (rb.bottom - vh * 0.15) / (vh * 0.5)), 0, 1)
-    scroll.opacity = Math.max(scroll.opacity, THREE.MathUtils.lerp(0.22, 1, scroll.build))
+    scroll.opacity = Math.max(scroll.opacity, THREE.MathUtils.lerp(after, 1, scroll.build))
   }
 }
 
@@ -910,8 +913,8 @@ function WatchModel({ mode }) {
       // Подбираем дистанцию так, чтобы часы помещались в правые ~45% экрана.
       const D = Math.max(8.6, 13 / aspect)
       const off = -0.4 * D * Math.tan((17.5 * Math.PI) / 180) * aspect
-      const look0 = aspect >= 1 ? [off, 0, 0] : [0, -2.4, 0]
-      const cam0 = aspect >= 1 ? [off, -0.4, D] : [0, -2.6, 8.4]
+      const look0 = aspect >= 1 ? [off, 0, 0] : [0, -1.0, 0]
+      const cam0 = aspect >= 1 ? [off, -0.4, D] : [0, -1.3, 7.2]
       const L = (a, b2) => a + (b2 - a) * bw
       target.cam = target.cam.map((v, i) => L(v, cam0[i]))
       target.look = target.look.map((v, i) => L(v, look0[i]))
@@ -926,8 +929,15 @@ function WatchModel({ mode }) {
       s.look[i] += (target.look[i] - s.look[i]) * k
     }
 
-    // Камера: на узких экранах отъезжаем дальше.
-    const f = aspect < 1 ? 1 + (1 - aspect) * 1.3 : 1
+    // Камера: на узких экранах отъезжаем дальше, чтобы часы помещались по ширине,
+    // и сдвигаем кадр вверх — снизу на телефоне лежит панель с подписями.
+    const f = aspect < 1 ? Math.min(2.3, 1 / aspect) : 1
+    const shiftY = aspect < 1 ? 0.13 : 0
+    if (cam.userData.shiftY !== shiftY || cam.userData.w !== st.size.width || cam.userData.h !== st.size.height) {
+      cam.userData = { shiftY, w: st.size.width, h: st.size.height }
+      if (shiftY) cam.setViewOffset(st.size.width, st.size.height, 0, st.size.height * shiftY, st.size.width, st.size.height)
+      else cam.clearViewOffset()
+    }
     look.current.set(...s.look)
     cam.position.set(
       s.look[0] + (s.cam[0] - s.look[0]) * f,
@@ -1066,7 +1076,7 @@ function WatchModel({ mode }) {
         position={[2.5, 3.5, 7]}
         intensity={mode === 'light' ? 2.4 : 2.0}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={IS_TOUCH ? [1024, 1024] : [2048, 2048]}
         shadow-camera-left={-3.2}
         shadow-camera-right={3.2}
         shadow-camera-top={3.2}
@@ -1276,6 +1286,8 @@ function CaptureBridge() {
   return null
 }
 
+const IS_TOUCH = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+
 export default function Watch3D({ mode }) {
   const stage = useRef()
 
@@ -1303,7 +1315,7 @@ export default function Watch3D({ mode }) {
     <div className="watch3d" ref={stage} aria-hidden="true">
       <Canvas
         shadows
-        dpr={[1, 2]}
+        dpr={IS_TOUCH ? [1, 1.5] : [1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         camera={{ fov: 35, position: [0, 0, 7.4], near: 0.05, far: 60 }}
       >

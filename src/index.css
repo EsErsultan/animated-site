@@ -64,10 +64,15 @@ html {
   scroll-behavior: smooth;
 }
 
+html,
+body {
+  /* clip, а не hidden: не ломает position: sticky и не даёт телефону «расширять» страницу */
+  overflow-x: clip;
+}
+
 body {
   background: var(--bg);
   min-height: 100vh;
-  overflow-x: hidden;
   line-height: 1.6;
 }
 
