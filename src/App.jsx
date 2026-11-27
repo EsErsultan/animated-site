@@ -10,7 +10,7 @@ import {
   useSpring,
   useTransform,
 } from 'framer-motion'
-import { STAGES } from './watchStages.js'
+import { PARTS, PAGE_COUNT } from './watchStages.js'
 import Configurator from './Configurator.jsx'
 import './App.css'
 import './Watch.css'
@@ -807,69 +807,127 @@ function Stats() {
   )
 }
 
-function StageBar({ progress, from, to }) {
-  const scaleX = useTransform(progress, [from, to], [0, 1])
+// Анимация смены страницы: при прокрутке вниз новая выезжает снизу, вверх — сверху.
+const pageVariants = {
+  enter: (dir) => ({ opacity: 0, y: dir * 70, filter: 'blur(10px)', scale: 0.96 }),
+  center: { opacity: 1, y: 0, filter: 'blur(0px)', scale: 1, transition: { duration: 0.6, ease: EASE } },
+  exit: (dir) => ({ opacity: 0, y: dir * -70, filter: 'blur(10px)', scale: 0.96, transition: { duration: 0.4, ease: EASE } }),
+}
+
+const lineVariants = {
+  enter: { opacity: 0, y: 18 },
+  center: (i) => ({ opacity: 1, y: 0, transition: { delay: 0.12 + i * 0.07, duration: 0.5, ease: EASE } }),
+}
+
+function PageContent({ page }) {
+  if (page === 'intro') {
+    return (
+      <>
+        <motion.span className="watch-step" variants={lineVariants} custom={0}>Механизм · {PARTS.length} деталей</motion.span>
+        <motion.h3 variants={lineVariants} custom={1}>Заглянем внутрь часов</motion.h3>
+        <motion.p variants={lineVariants} custom={2}>
+          Прокручивайте вниз: каждая деталь по очереди выйдет вперёд и расскажет, за что отвечает, а потом вернётся на своё место.
+        </motion.p>
+        <motion.div className="watch-scroll-hint" variants={lineVariants} custom={3}>
+          <span /> Листайте
+        </motion.div>
+      </>
+    )
+  }
+  if (page === 'final') {
+    return (
+      <>
+        <motion.span className="watch-step" variants={lineVariants} custom={0}>Финал</motion.span>
+        <motion.h3 variants={lineVariants} custom={1}>Все {PARTS.length} деталей вместе</motion.h3>
+        <motion.p variants={lineVariants} custom={2}>
+          Так выглядит механизм в полном разлёте. Прокрутите вверх — детали снова по очереди выйдут вперёд, а часы соберутся.
+        </motion.p>
+      </>
+    )
+  }
+  const part = PARTS[page]
   return (
-    <span>
-      <motion.i style={{ scaleX }} />
-    </span>
+    <>
+      <motion.span className="watch-bignum" variants={lineVariants} custom={0} aria-hidden="true">
+        {String(page + 1).padStart(2, '0')}
+      </motion.span>
+      <motion.span className="watch-step" variants={lineVariants} custom={0}>
+        Деталь {page + 1} из {PARTS.length}
+      </motion.span>
+      <motion.h3 variants={lineVariants} custom={1}>{part.title}</motion.h3>
+      <motion.div className="watch-role" variants={lineVariants} custom={2}>
+        <em>За что отвечает</em>
+        {part.role}
+      </motion.div>
+      <motion.p variants={lineVariants} custom={3}>{part.text}</motion.p>
+      <motion.ul className="watch-facts" variants={lineVariants} custom={4}>
+        {part.facts.map((f) => (
+          <li key={f}>{f}</li>
+        ))}
+      </motion.ul>
+    </>
   )
 }
 
 function WatchSection() {
   const ref = useRef(null)
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] })
-  const [stage, setStage] = useState(0)
+  const [state, setState] = useState({ page: 'intro', dir: 1 })
+  const order = (p) => (p === 'intro' ? -1 : p === 'final' ? PARTS.length : p)
+
   useEffect(
     () =>
       scrollYProgress.on('change', (v) => {
-        let i = 0
-        while (i < STAGES.length - 1 && v >= STAGES[i + 1].from) i++
-        setStage(i)
+        const u = v * PAGE_COUNT
+        const page = u < 1 ? 'intro' : u < PARTS.length + 1 ? Math.min(PARTS.length - 1, Math.floor(u - 1)) : 'final'
+        setState((prev) => (prev.page === page ? prev : { page, dir: order(page) > order(prev.page) ? 1 : -1 }))
       }),
     [scrollYProgress],
   )
-  const s = STAGES[stage]
+
+  // Переход к детали по клику в оглавлении: середина её страницы.
+  const goTo = (i) => {
+    const el = ref.current
+    const y = el.offsetTop + ((i + 1.5) / PAGE_COUNT) * (el.offsetHeight - window.innerHeight)
+    window.scrollTo({ top: y, behavior: 'smooth' })
+  }
+
+  const progress = useTransform(scrollYProgress, [1 / PAGE_COUNT, (PARTS.length + 1) / PAGE_COUNT], [0, 1])
+
   return (
-    <section className="watch-section" id="watch" data-theme="watch" ref={ref}>
-      <motion.div
-        className="watch-intro heading"
-        initial="hidden"
-        whileInView="show"
-        viewport={VIEWPORT}
-        variants={stagger}
-      >
-        <Heading kicker="Механизм">Заглянем внутрь часов</Heading>
-      </motion.div>
+    <section className="watch-section" id="watch" data-theme="watch" ref={ref} style={{ height: `${PAGE_COUNT * 100}svh` }}>
       <div className="watch-sticky">
-        <motion.div
-          className="watch-panel"
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ amount: 0.5 }}
-          transition={{ duration: 0.6, ease: EASE }}
-        >
-          <AnimatePresence mode="wait">
+        <div className="watch-panel">
+          <AnimatePresence mode="wait" custom={state.dir}>
             <motion.div
-              key={stage}
-              initial={{ opacity: 0, y: 16, filter: 'blur(6px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -16, filter: 'blur(6px)' }}
-              transition={{ duration: 0.35, ease: EASE }}
+              key={String(state.page)}
+              custom={state.dir}
+              variants={pageVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              className="watch-page"
             >
-              <span className="watch-step">
-                Этап {stage + 1} из {STAGES.length}
-              </span>
-              <h3>{s.title}</h3>
-              <p>{s.text}</p>
+              <PageContent page={state.page} />
             </motion.div>
           </AnimatePresence>
-          <div className="watch-bar">
-            {STAGES.map((st, i) => (
-              <StageBar key={st.title} progress={scrollYProgress} from={st.from} to={STAGES[i + 1]?.from ?? 1} />
-            ))}
+          <div className="watch-progress">
+            <motion.i style={{ scaleX: progress }} />
           </div>
-        </motion.div>
+        </div>
+
+        <nav className="watch-toc" aria-label="Детали механизма">
+          {PARTS.map((p, i) => (
+            <button
+              key={p.id}
+              className={`watch-toc-item ${state.page === i ? 'watch-toc-item--active' : ''}`}
+              onClick={() => goTo(i)}
+            >
+              <span className="watch-toc-num">{String(i + 1).padStart(2, '0')}</span>
+              <span className="watch-toc-label">{p.title}</span>
+            </button>
+          ))}
+        </nav>
       </div>
     </section>
   )

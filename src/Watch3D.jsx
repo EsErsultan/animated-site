@@ -4,6 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { findOption, useWatchConfig, watchStore } from './watchConfig.js'
+import { PARTS, PAGE_COUNT } from './watchStages.js'
 
 /*
   Процедурная 3D-модель механических часов на three.js.
@@ -42,39 +43,45 @@ function readScroll() {
 }
 
 
-/* ---------- Ключевые кадры камеры и разборки ---------- */
+/* ---------- Режиссура секции «Механизм» ---------- */
 
-// cam/look — камера и точка взгляда; fly — улёт стекла, стрелок, циферблата;
+// cam/look — камера и точка взгляда; fly — подъём стекла, стрелок, циферблата;
 // bridge — подъём мостов и ротора, bop — их прозрачность; spread — разлёт колёс; drop — уход корпуса.
-const KEYS = [
-  { t: 0.0, cam: [0, 0, 7.4], look: [0, 0, 0], fly: 0, bridge: 0, bop: 1, spread: 0, drop: 0 },
-  { t: 0.13, cam: [0.4, -2.7, 6.2], look: [0, 0, 0.2], fly: 0.3, bridge: 0, bop: 1, spread: 0, drop: 0 },
-  { t: 0.27, cam: [1.7, -3.6, 4.9], look: [0, 0, 0.3], fly: 1, bridge: 0, bop: 1, spread: 0, drop: 0.35 },
-  { t: 0.41, cam: [-1.3, -3.4, 4.4], look: [0, 0, 0.5], fly: 1, bridge: 1, bop: 0.3, spread: 0, drop: 0.7 },
-  { t: 0.55, cam: [1.0, -2.0, 2.7], look: [0.3, 0.05, 0.3], fly: 1, bridge: 1, bop: 0.08, spread: 0, drop: 1 },
-  { t: 0.69, cam: [-0.25, -1.95, 1.45], look: [0.02, -0.92, 0.3], fly: 1, bridge: 1, bop: 0.05, spread: 0, drop: 1 },
-  { t: 0.83, cam: [1.25, -1.75, 1.2], look: [0.55, -1.05, 0.38], fly: 1, bridge: 1, bop: 0.05, spread: 0, drop: 1 },
-  { t: 1.0, cam: [0.6, -6.6, 6.4], look: [0, 0, 1.3], fly: 1, bridge: 1, bop: 1, spread: 1, drop: 1 },
-]
+const ASSEMBLED = { cam: [0, 0, 7.4], look: [0, 0, 0], fly: 0, bridge: 0, bop: 1, spread: 0, drop: 0 }
+const FINAL = { cam: [0.6, -6.6, 6.4], look: [0, 0, 1.3], fly: 1, bridge: 1, bop: 1, spread: 1, drop: 1 }
+
+// Обзор в разлёте: из него по очереди выходят детали.
+function overview(aspect) {
+  const base = { fly: 0.3, bridge: 0.55, bop: 1, spread: 0.55, drop: 0.3 }
+  return aspect >= 1
+    ? { ...base, cam: [-1.2, -3.9, 7.4], look: [-1.2, 0, 0.6] }
+    : { ...base, cam: [0, -3.4, 6.8], look: [0, -0.3, 0.6] }
+}
 
 const smooth = (x) => x * x * (3 - 2 * x)
+const clamp01 = (x) => Math.min(1, Math.max(0, x))
+const step = (a, b, x) => smooth(clamp01((x - a) / (b - a)))
 
-function sampleKeys(t) {
-  let i = 0
-  while (i < KEYS.length - 2 && t > KEYS[i + 1].t) i++
-  const a = KEYS[i]
-  const b = KEYS[i + 1]
-  const u = smooth(THREE.MathUtils.clamp((t - a.t) / (b.t - a.t), 0, 1))
+function mixState(a, b, u) {
   const mix = (x, y) => x + (y - x) * u
-  return {
-    cam: a.cam.map((v, k) => mix(v, b.cam[k])),
-    look: a.look.map((v, k) => mix(v, b.look[k])),
-    fly: mix(a.fly, b.fly),
-    bridge: mix(a.bridge, b.bridge),
-    bop: mix(a.bop, b.bop),
-    spread: mix(a.spread, b.spread),
-    drop: mix(a.drop, b.drop),
+  const out = { cam: a.cam.map((v, k) => mix(v, b.cam[k])), look: a.look.map((v, k) => mix(v, b.look[k])) }
+  for (const key of ['fly', 'bridge', 'bop', 'spread', 'drop']) out[key] = mix(a[key], b[key])
+  return out
+}
+
+// Страница 0 — часы раскрываются в обзор; 1…N — по детали; последняя — полный разлёт.
+// e — насколько деталь вышла вперёд: выходит в начале страницы, уходит на место в конце.
+function timeline(t, aspect) {
+  const N = PARTS.length
+  const u = t * PAGE_COUNT
+  const ov = overview(aspect)
+  if (u < 1) return { ...mixState(ASSEMBLED, ov, smooth(u)), focus: -1, e: 0 }
+  if (u < N + 1) {
+    const i = Math.min(N - 1, Math.floor(u - 1))
+    const l = u - 1 - i
+    return { ...mixState(ov, ov, 0), focus: i, e: step(0.06, 0.32, l) * (1 - step(0.7, 0.95, l)) }
   }
+  return { ...mixState(ov, FINAL, smooth(clamp01(u - N - 1))), focus: -1, e: 0 }
 }
 
 /* ---------- Текстуры на canvas ---------- */
@@ -533,7 +540,7 @@ function useMaterials() {
     })
     const plate = new THREE.MeshStandardMaterial({ color: '#c6cbd2', metalness: 0.85, roughness: 0.4, map: perlageTexture() })
     const bridge = new THREE.MeshStandardMaterial({ color: '#e6e9ed', metalness: 0.92, roughness: 0.28, map: cotesTexture() })
-    const sunburst = new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 1, roughness: 0.22, map: sunburstTexture() })
+    const sunburst = new THREE.MeshStandardMaterial({ color: '#c4c9d0', metalness: 1, roughness: 0.3, map: sunburstTexture() })
     const rotorMat = new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 1, roughness: 0.25, map: sunburstTexture('#d6b060') })
     const casePolished = new THREE.MeshStandardMaterial({ color: '#dfe3e8', metalness: 1, roughness: 0.08 })
     const caseBrushed = new THREE.MeshStandardMaterial({ color: '#cfd4da', metalness: 1, roughness: 0.32 })
@@ -752,7 +759,13 @@ function WatchModel({ mode }) {
     if (el) parts.current[name] = el
   }
   const cam = useThree((s) => s.camera)
-  const state = useRef(sampleKeys(0))
+  const state = useRef({ ...mixState(ASSEMBLED, ASSEMBLED, 0), focus: -1, e: 0 })
+  const homes = useRef({})
+  const dim = useRef()
+  const tmp = useMemo(
+    () => ({ v: new THREE.Vector3(), t: new THREE.Vector3(), c: new THREE.Vector3(), pivot: new THREE.Vector3(), off: new THREE.Vector3(), q: new THREE.Quaternion(), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), e: new THREE.Euler(), id: new THREE.Quaternion(), z: new THREE.Vector3(0, 0, 1) }),
+    [],
+  )
   const look = useRef(new THREE.Vector3())
   const rimA = useRef()
   const rimB = useRef()
@@ -904,12 +917,12 @@ function WatchModel({ mode }) {
 
   useFrame((st, dt) => {
     readScroll()
-    const target = sampleKeys(scroll.t)
     const aspect = st.size.width / st.size.height
+    const target = timeline(scroll.t, aspect)
     // В конструкторе часы собраны и стоят сбоку от панели (снизу — на телефоне).
     const bw = smooth(scroll.build)
     if (bw > 0) {
-      const asm = KEYS[0]
+      const asm = ASSEMBLED
       // Подбираем дистанцию так, чтобы часы помещались в правые ~45% экрана.
       const D = Math.max(8.6, 13 / aspect)
       const off = -0.4 * D * Math.tan((17.5 * Math.PI) / 180) * aspect
@@ -924,6 +937,13 @@ function WatchModel({ mode }) {
     const s = state.current
     const k = 1 - Math.exp(-dt * 4)
     for (const key of ['fly', 'bridge', 'bop', 'spread', 'drop']) s[key] += (target[key] - s[key]) * k
+    // Смена детали: текущая сначала возвращается на место, потом выходит следующая.
+    let te = bw > 0.5 ? 0 : target.e
+    if (target.focus !== s.focus) {
+      te = 0
+      if (s.e < 0.02) s.focus = target.focus
+    }
+    s.e += (te - s.e) * (1 - Math.exp(-dt * 6))
     for (let i = 0; i < 3; i++) {
       s.cam[i] += (target.cam[i] - s.cam[i]) * k
       s.look[i] += (target.look[i] - s.look[i]) * k
@@ -958,6 +978,17 @@ function WatchModel({ mode }) {
     root.current.rotation.y += (ry - root.current.rotation.y) * kr
 
     const P_ = parts.current
+    for (const part of PARTS) {
+      for (const name of part.names) {
+        const el = P_[name]
+        if (!el) continue
+        if (!homes.current[name]) homes.current[name] = el.position.clone()
+        el.rotation.set(0, 0, 0)
+        el.scale.setScalar(1)
+        el.position.x = homes.current[name].x
+        el.position.y = homes.current[name].y
+      }
+    }
 
     // Стрелки — реальное время, секундная «метёт» 8 шагами в секунду.
     const now = new Date()
@@ -1006,6 +1037,7 @@ function WatchModel({ mode }) {
     setZ('rotor', 0.5, lift * 1.6 + sp * 0.6)
     setZ('case', 0, -s.drop * 1.6)
     if (P_.crown) P_.crown.position.x = 2.2 + s.drop * 0.6
+    if (P_.crown) P_.crown.position.z = 0.04 - s.drop * 1.6
     setZ('dial', 0, s.fly * 2.8)
     setZ('hands', 0, s.fly * 3.6)
     setZ('crystal', 0, s.fly * 4.6)
@@ -1027,6 +1059,59 @@ function WatchModel({ mode }) {
     m.bridgeSet.engraveRotor.opacity = rotorFade
     if (P_.rotor) P_.rotor.visible = rotorFade > 0.02
     if (P_.case) P_.case.visible = s.drop < 0.98
+
+    // Витрина: выбранная деталь вылетает к камере, разворачивается к зрителю и увеличивается.
+    const e = s.focus >= 0 ? s.e : 0
+    cam.updateMatrixWorld()
+    root.current.updateMatrixWorld()
+    const dShow = 4.4 * f
+    if (e > 0.001) {
+      const part = PARTS[s.focus]
+      const els = part.names.map((n) => P_[n]).filter(Boolean)
+      els.forEach((el) => (el.visible = true))
+      if (part.id === 'case') P_.case.visible = true
+      // Точка витрины: справа от панели на компьютере, сверху на телефоне.
+      const ndc = aspect >= 1 ? [0.36, 0.02] : [0, 0.3]
+      tmp.v.set(ndc[0], ndc[1], 0.5).unproject(cam).sub(cam.position).normalize()
+      tmp.t.copy(cam.position).addScaledVector(tmp.v, dShow)
+      root.current.worldToLocal(tmp.t)
+      tmp.c.copy(cam.position)
+      root.current.worldToLocal(tmp.c)
+      tmp.c.sub(tmp.t).normalize()
+      tmp.qa.setFromUnitVectors(tmp.z, tmp.c)
+      tmp.e.set(Math.sin(time * 0.6) * 0.28, Math.sin(time * 0.45) * 0.4, 0)
+      tmp.qb.setFromEuler(tmp.e)
+      tmp.q.copy(tmp.id).slerp(tmp.qa.multiply(tmp.qb), e)
+      tmp.pivot.set(0, 0, 0)
+      els.forEach((el) => tmp.pivot.add(el.position))
+      tmp.pivot.divideScalar(els.length)
+      const sc = 1 + (part.scale - 1) * e
+      tmp.t.sub(tmp.pivot).multiplyScalar(e).add(tmp.pivot)
+      for (const el of els) {
+        tmp.off.copy(el.position).sub(tmp.pivot).multiplyScalar(sc).applyQuaternion(tmp.q)
+        el.position.copy(tmp.t).add(tmp.off)
+        el.quaternion.premultiply(tmp.q)
+        el.scale.setScalar(sc)
+      }
+      if (part.id === 'dial') {
+        m.dial.opacity = m.appliedGold.opacity = m.lume.opacity = m.handGold.opacity = m.handSec.opacity = 1
+      }
+      if (part.id === 'rotor' || part.id === 'bridges') {
+        Object.values(m.bridgeSet).forEach((mat) => (mat.opacity = 1))
+      }
+    }
+    // Затемняющая «шторка» между обзором и витриной.
+    if (dim.current) {
+      const dPlane = dShow * 1.3
+      tmp.v.set(0, 0, -1).applyQuaternion(cam.quaternion)
+      dim.current.position.copy(cam.position).addScaledVector(tmp.v, dPlane)
+      dim.current.quaternion.copy(cam.quaternion)
+      const hgt = 2 * dPlane * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.6
+      dim.current.scale.set(hgt * Math.max(1, aspect) * 1.6, hgt, 1)
+      dim.current.material.opacity = e * (mode === 'light' ? 0.72 : 0.68)
+      dim.current.material.color.set(mode === 'light' ? '#f3f4f7' : '#05060a')
+      dim.current.visible = e > 0.001
+    }
 
     // Цвета: подсветка и циферблат берут палитру текущей секции.
     if (colorClock.current++ % 20 === 0) {
@@ -1089,6 +1174,11 @@ function WatchModel({ mode }) {
       />
       <pointLight ref={rimA} position={[-4, -2, 3]} intensity={18} distance={14} />
       <pointLight ref={rimB} position={[4, 3, 1.5]} intensity={14} distance={14} />
+
+      <mesh ref={dim} renderOrder={10} visible={false}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial transparent depthWrite={false} opacity={0} toneMapped={false} />
+      </mesh>
 
       <group ref={root}>
         {/* Корпус, ушки, ремешок, задняя крышка */}
