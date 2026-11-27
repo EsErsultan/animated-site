@@ -17,7 +17,7 @@ const TAU = Math.PI * 2
 
 /* ---------- Состояние прокрутки (без перерисовок React) ---------- */
 
-const scroll = { t: 0, opacity: 0.3, px: 0, py: 0, build: 0 }
+const scroll = { t: 0, opacity: 0.3, px: 0, py: 0, build: 0, wv: 0, after: false }
 const drag = watchStore.drag
 
 function readScroll() {
@@ -26,6 +26,9 @@ function readScroll() {
   const r = el.getBoundingClientRect()
   const vh = window.innerHeight
   scroll.t = THREE.MathUtils.clamp(-r.top / Math.max(1, r.height - vh), 0, 1)
+  // Насколько секция механизма на экране и прошли ли мы её.
+  scroll.wv = THREE.MathUtils.clamp(Math.min((vh - r.top) / vh, r.bottom / vh), 0, 1)
+  scroll.after = r.bottom < vh * 0.4
   // На телефоне фоновые часы крупнее относительно текста — делаем их тише.
   const base = window.innerWidth < 640 ? 0.14 : 0.3
   const after = window.innerWidth < 640 ? 0.12 : 0.22
@@ -45,43 +48,52 @@ function readScroll() {
 
 /* ---------- Режиссура секции «Механизм» ---------- */
 
-// cam/look — камера и точка взгляда; fly — подъём стекла, стрелок, циферблата;
-// bridge — подъём мостов и ротора, bop — их прозрачность; spread — разлёт колёс; drop — уход корпуса.
-const ASSEMBLED = { cam: [0, 0, 7.4], look: [0, 0, 0], fly: 0, bridge: 0, bop: 1, spread: 0, drop: 0 }
-const FINAL = { cam: [0.6, -6.6, 6.4], look: [0, 0, 1.3], fly: 1, bridge: 1, bop: 1, spread: 1, drop: 1 }
+const ASSEMBLED = { cam: [0, 0, 7.4], look: [0, 0, 0] }
+// Камера смотрит на стол спереди-сверху под одним и тем же углом.
+const VIEW_DIR = new THREE.Vector3(0, -0.62, 0.78).normalize()
+const X_AXIS = new THREE.Vector3(1, 0, 0)
+const Z_AXIS = new THREE.Vector3(0, 0, 1)
 
-// Обзор в разлёте: из него по очереди выходят детали.
-function overview(aspect) {
-  const base = { fly: 0.3, bridge: 0.55, bop: 1, spread: 0.55, drop: 0.3 }
-  return aspect >= 1
-    ? { ...base, cam: [-1.2, -3.9, 7.4], look: [-1.2, 0, 0.6] }
-    : { ...base, cam: [0, -3.4, 6.8], look: [0, -0.3, 0.6] }
+function viewFrom(look, dist) {
+  return { look, cam: [look[0] + VIEW_DIR.x * dist, look[1] + VIEW_DIR.y * dist, look[2] + VIEW_DIR.z * dist] }
 }
+
+// Обзор: часы на столе, справа от панели на компьютере.
+const overview = (aspect) => (aspect >= 1 ? viewFrom([-2.0, 0.6, 0], 10.5) : viewFrom([0, 0.3, 0], 8.5))
+// Финал: весь стол с разложенными деталями.
+const finalView = (aspect) => (aspect >= 1 ? viewFrom([2.2, 1.6, 0], 19.5) : viewFrom([3.0, 1.4, 0], 14))
 
 const smooth = (x) => x * x * (3 - 2 * x)
 const clamp01 = (x) => Math.min(1, Math.max(0, x))
 const step = (a, b, x) => smooth(clamp01((x - a) / (b - a)))
 
-function mixState(a, b, u) {
-  const mix = (x, y) => x + (y - x) * u
-  const out = { cam: a.cam.map((v, k) => mix(v, b.cam[k])), look: a.look.map((v, k) => mix(v, b.look[k])) }
-  for (const key of ['fly', 'bridge', 'bop', 'spread', 'drop']) out[key] = mix(a[key], b[key])
+// Кубическая кривая Безье — плавная траектория детали.
+function bezier(out, p0, p1, p2, p3, t) {
+  const it = 1 - t
+  const a = it * it * it
+  const b = 3 * it * it * t
+  const c = 3 * it * t * t
+  const d = t * t * t
+  out.set(
+    a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+    a * p0.z + b * p1.z + c * p2.z + d * p3.z,
+  )
   return out
 }
 
-// Страница 0 — часы раскрываются в обзор; 1…N — по детали; последняя — полный разлёт.
-// e — насколько деталь вышла вперёд: выходит в начале страницы, уходит на место в конце.
-function timeline(t, aspect) {
-  const N = PARTS.length
-  const u = t * PAGE_COUNT
-  const ov = overview(aspect)
-  if (u < 1) return { ...mixState(ASSEMBLED, ov, smooth(u)), focus: -1, e: 0 }
-  if (u < N + 1) {
-    const i = Math.min(N - 1, Math.floor(u - 1))
-    const l = u - 1 - i
-    return { ...mixState(ov, ov, 0), focus: i, e: step(0.06, 0.32, l) * (1 - step(0.7, 0.95, l)) }
-  }
-  return { ...mixState(ov, FINAL, smooth(clamp01(u - N - 1))), focus: -1, e: 0 }
+// Мягкий круглый край у стола.
+function radialAlpha() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 256
+  const g = c.getContext('2d')
+  const gr = g.createRadialGradient(128, 128, 40, 128, 128, 128)
+  gr.addColorStop(0, '#fff')
+  gr.addColorStop(0.7, '#bbb')
+  gr.addColorStop(1, '#000')
+  g.fillStyle = gr
+  g.fillRect(0, 0, 256, 256)
+  return new THREE.CanvasTexture(c)
 }
 
 /* ---------- Текстуры на canvas ---------- */
@@ -759,11 +771,18 @@ function WatchModel({ mode }) {
     if (el) parts.current[name] = el
   }
   const cam = useThree((s) => s.camera)
-  const state = useRef({ ...mixState(ASSEMBLED, ASSEMBLED, 0), focus: -1, e: 0 })
-  const homes = useRef({})
+  const state = useRef({ cam: [...ASSEMBLED.cam], look: [...ASSEMBLED.look] })
+  const info = useRef(null)
+  const springs = useRef({})
   const dim = useRef()
+  const table = useRef()
+  const tableAlpha = useMemo(() => radialAlpha(), [])
   const tmp = useMemo(
-    () => ({ v: new THREE.Vector3(), t: new THREE.Vector3(), c: new THREE.Vector3(), pivot: new THREE.Vector3(), off: new THREE.Vector3(), q: new THREE.Quaternion(), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), e: new THREE.Euler(), id: new THREE.Quaternion(), z: new THREE.Vector3(0, 0, 1) }),
+    () => ({
+      v: new THREE.Vector3(), c: new THREE.Vector3(), w: new THREE.Vector3(), off: new THREE.Vector3(),
+      a: new THREE.Vector3(), h: new THREE.Vector3(), s: new THREE.Vector3(), b1: new THREE.Vector3(), b2: new THREE.Vector3(),
+      q: new THREE.Quaternion(), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), e: new THREE.Euler(),
+    }),
     [],
   )
   const look = useRef(new THREE.Vector3())
@@ -918,35 +937,204 @@ function WatchModel({ mode }) {
   useFrame((st, dt) => {
     readScroll()
     const aspect = st.size.width / st.size.height
-    const target = timeline(scroll.t, aspect)
-    // В конструкторе часы собраны и стоят сбоку от панели (снизу — на телефоне).
+    const P_ = parts.current
+    const time = st.clock.elapsedTime
+    const ddt = Math.min(dt, 1 / 30)
+
+    // Один раз запоминаем «дом» каждой детали, её низ, верх и размер (при нулевом наклоне).
+    if (!info.current) {
+      const els0 = PARTS.flatMap((p) => p.names.map((n) => P_[n]))
+      if (els0.some((e) => !e)) return
+      root.current.rotation.set(0, 0, 0)
+      root.current.updateMatrixWorld(true)
+      const box = new THREE.Box3()
+      const data = {}
+      let tableZ = -0.4
+      for (const part of PARTS) {
+        const els = part.names.map((n) => P_[n])
+        const pivot = new THREE.Vector3()
+        els.forEach((el) => pivot.add(el.position))
+        pivot.divideScalar(els.length)
+        box.makeEmpty()
+        els.forEach((el) => box.expandByObject(el))
+        const radius = Math.max(box.max.x - pivot.x, pivot.x - box.min.x, box.max.y - pivot.y, pivot.y - box.min.y)
+        data[part.id] = {
+          els,
+          pivot,
+          homes: els.map((el) => el.position.clone()),
+          bottom: box.min.z - pivot.z,
+          radius: Math.min(radius, 2.4),
+          pos: pivot.clone(),
+        }
+        if (part.id === 'case') tableZ = box.min.z
+      }
+      info.current = { data, tableZ }
+      if (table.current) table.current.position.z = tableZ - 0.003
+    }
+    const { data, tableZ } = info.current
+
+    // Цели пружин: детали до текущей страницы лежат на столе (2), текущая — на витрине (1), остальные — на месте (0).
+    const N = PARTS.length
+    const u = scroll.t * PAGE_COUNT
+    const page = u < 1 ? -1 : u < N + 1 ? Math.min(N - 1, Math.floor(u - 1)) : N
+    const l = u - 1 - page
     const bw = smooth(scroll.build)
+    const idle = bw > 0.5 || scroll.after || scroll.t <= 0
+    PARTS.forEach((part, i) => {
+      const sp = springs.current[part.id] || (springs.current[part.id] = { p: 0, v: 0 })
+      let target = i < page ? 2 : i > page ? 0 : l < 0.1 ? 0 : l < 0.7 ? 1 : 2
+      if (idle) target = 0
+      // Масса на пружине: к витрине — без раскачки, на стол и в гнездо — с отскоком при касании.
+      const omega = 5.2
+      const zeta = target === 1 ? 0.95 : 0.55
+      for (let n = 0; n < 3; n++) {
+        const h = ddt / 3
+        const a = omega * omega * (target - sp.p) - 2 * zeta * omega * sp.v
+        sp.v += a * h
+        sp.p += sp.v * h
+      }
+    })
+
+    // Сброс поз деталей перед анимацией механизма.
+    for (const part of PARTS) {
+      const d = data[part.id]
+      d.els.forEach((el, j) => {
+        el.position.copy(d.homes[j])
+        el.rotation.set(0, 0, 0)
+      })
+    }
+
+    // Стрелки — реальное время, секундная «метёт» 8 шагами в секунду.
+    const now = new Date()
+    const sec = now.getSeconds() + Math.floor(now.getMilliseconds() / 125) / 8
+    const min = now.getMinutes() + sec / 60
+    const hr = (now.getHours() % 12) + min / 60
+    if (P_.hour) P_.hour.rotation.z = -(hr / 12) * TAU
+    if (P_.minute) P_.minute.rotation.z = -(min / 60) * TAU
+    if (P_.second) P_.second.rotation.z = -(sec / 60) * TAU
+
+    // Механизм идёт, пока деталь на месте; вынутая деталь останавливается — как в жизни.
+    const running = (id) => (springs.current[id]?.p ?? 0) < 0.05
+    const beats = time * 6
+    const tick = Math.floor(beats)
+    const frac = beats - tick
+    const easeTick = tick + Math.min(1, frac * 5)
+    if (running('barrel')) P_.barrel.userData.angle = time * P_.barrel.userData.spin
+    if (running('train')) for (const n of ['center', 'third', 'fourth']) P_[n].userData.angle = time * P_[n].userData.spin
+    if (running('escape')) P_.escape.userData.angle = (-easeTick * TAU) / 15 / 2
+    if (running('fork')) P_.fork.userData.angle = Math.tanh(Math.sin(beats * Math.PI) * 6) * 0.14
+    for (const n of ['barrel', 'center', 'third', 'fourth', 'escape', 'fork']) P_[n].rotation.z = P_[n].userData.angle || 0
+    const bal = running('balance') ? Math.sin(time * TAU * 3) * 2.5 : 0
+    if (P_.balanceWheel) P_.balanceWheel.rotation.z += (bal - P_.balanceWheel.rotation.z) * (running('balance') ? 1 : 0.1)
+    if (P_.hairspring) {
+      P_.hairspring.rotation.z = P_.balanceWheel.rotation.z * 0.12
+      const sc = 1 + Math.sin(P_.balanceWheel.rotation.z) * 0.03
+      P_.hairspring.scale.set(sc, sc, 1)
+    }
+    if (P_.ratchet && running('bridges')) P_.ratchet.rotation.z = time * 0.03
+    if (P_.rotor) P_.rotor.rotation.z = running('rotor') ? Math.sin(time * 0.35) * 1.2 + time * 0.08 : P_.rotor.rotation.z
+
+    // Траектория: 0→0.5 — строго вдоль оси (вынимаем из гнезда), 0.5→1 — подъём на витрину,
+    // 1→2 — по дуге на стол с вертикальной посадкой. Перелёт пружины за 0 или 2 — отскок от поверхности.
+    cam.updateMatrixWorld()
+    root.current.updateMatrixWorld()
+    tmp.c.copy(cam.position)
+    root.current.worldToLocal(tmp.c)
+    let focusPos = null
+    let focusR = 1
+    let focusW = 0
+    PARTS.forEach((part, i) => {
+      const d = data[part.id]
+      const raw = springs.current[part.id].p
+      const pv = raw < 0 ? -raw * 0.8 : raw > 2 ? 2 - (raw - 2) * 0.8 : raw
+      const H = d.pivot
+      const A = tmp.a.copy(H)
+      if (part.axis === 'x') A.x += 1.25
+      else A.z = Math.max(H.z, 1.05 - d.bottom)
+      const hov = tmp.h.copy(A)
+      if (part.axis === 'x') hov.z = 1.1
+      hov.z += 0.75 + d.radius * 0.25
+      const pos = d.pos
+      if (pv <= 0.5) {
+        pos.lerpVectors(H, A, smooth(pv / 0.5))
+      } else if (pv <= 1) {
+        tmp.b1.copy(A).addScaledVector(part.axis === 'x' ? X_AXIS : Z_AXIS, 0.35)
+        tmp.b2.copy(hov).setZ(hov.z - 0.25)
+        bezier(pos, A, tmp.b1, tmp.b2, hov, smooth((pv - 0.5) / 0.5))
+      } else {
+        const S = tmp.s
+        if (part.slot) S.set(part.slot[0], part.slot[1], tableZ - d.bottom + 0.004)
+        else S.copy(H)
+        tmp.b1.copy(hov).setZ(hov.z + 0.7)
+        tmp.b2.copy(S).setZ(Math.max(hov.z, S.z) + 1.3)
+        bezier(pos, hov, tmp.b1, tmp.b2, S, smooth(pv - 1))
+      }
+      // Поворот к зрителю только когда деталь уже вынута и в воздухе; садится она ровно.
+      const rot = pv <= 1 ? step(0.55, 1, pv) : 1 - step(1, 1.4, pv)
+      tmp.q.identity()
+      if (rot > 0.001) {
+        tmp.v.copy(tmp.c).sub(pos).normalize()
+        tmp.qa.setFromUnitVectors(Z_AXIS, tmp.v)
+        tmp.e.set(Math.sin(time * 0.5) * 0.16, Math.sin(time * 0.37) * 0.28, 0)
+        tmp.qb.setFromEuler(tmp.e)
+        tmp.qa.multiply(tmp.qb)
+        tmp.q.slerp(tmp.qa, rot * 0.85)
+      }
+      d.els.forEach((el, j) => {
+        tmp.off.copy(d.homes[j]).sub(H).applyQuaternion(tmp.q)
+        el.position.copy(pos).add(tmp.off)
+        el.quaternion.premultiply(tmp.q)
+      })
+      if (i === page) {
+        focusPos = pos
+        focusR = d.radius
+        focusW = smooth(clamp01(1 - Math.abs(pv - 1) * 1.7))
+      }
+    })
+
+    // Камера: вступление → обзор стола → крупный план детали на витрине → общий вид в финале.
+    const ov = overview(aspect)
+    let tc
+    let tl
+    if (page === -1) {
+      const a = smooth(clamp01(u))
+      tc = ASSEMBLED.cam.map((v, k) => v + (ov.cam[k] - v) * a)
+      tl = ASSEMBLED.look.map((v, k) => v + (ov.look[k] - v) * a)
+    } else if (page === N) {
+      const fin = finalView(aspect)
+      const a = smooth(clamp01(l))
+      tc = ov.cam.map((v, k) => v + (fin.cam[k] - v) * a)
+      tl = ov.look.map((v, k) => v + (fin.look[k] - v) * a)
+    } else {
+      tc = [...ov.cam]
+      tl = [...ov.look]
+    }
+    if (focusPos && focusW > 0) {
+      tmp.w.copy(focusPos)
+      root.current.localToWorld(tmp.w)
+      const dist = 1.7 + focusR * 2.5
+      // На компьютере деталь правее панели, на телефоне — по центру.
+      const side = aspect >= 1 ? dist * Math.tan((17.5 * Math.PI) / 180) * aspect * 0.33 : 0
+      const lc = [tmp.w.x - side, tmp.w.y, tmp.w.z]
+      const cc = [lc[0] + VIEW_DIR.x * dist, lc[1] + VIEW_DIR.y * dist, lc[2] + VIEW_DIR.z * dist]
+      tc = tc.map((v, k) => v + (cc[k] - v) * focusW)
+      tl = tl.map((v, k) => v + (lc[k] - v) * focusW)
+    }
+
+    // В конструкторе часы собраны и стоят сбоку от панели (снизу — на телефоне).
     if (bw > 0) {
-      const asm = ASSEMBLED
-      // Подбираем дистанцию так, чтобы часы помещались в правые ~45% экрана.
       const D = Math.max(8.6, 13 / aspect)
       const off = -0.4 * D * Math.tan((17.5 * Math.PI) / 180) * aspect
       const look0 = aspect >= 1 ? [off, 0, 0] : [0, -1.0, 0]
       const cam0 = aspect >= 1 ? [off, -0.4, D] : [0, -1.3, 7.2]
-      const L = (a, b2) => a + (b2 - a) * bw
-      target.cam = target.cam.map((v, i) => L(v, cam0[i]))
-      target.look = target.look.map((v, i) => L(v, look0[i]))
-      for (const key of ['fly', 'bridge', 'spread', 'drop']) target[key] = L(target[key], asm[key])
-      target.bop = L(target.bop, 1)
+      tc = tc.map((v, i) => v + (cam0[i] - v) * bw)
+      tl = tl.map((v, i) => v + (look0[i] - v) * bw)
     }
     const s = state.current
-    const k = 1 - Math.exp(-dt * 4)
-    for (const key of ['fly', 'bridge', 'bop', 'spread', 'drop']) s[key] += (target[key] - s[key]) * k
-    // Смена детали: текущая сначала возвращается на место, потом выходит следующая.
-    let te = bw > 0.5 ? 0 : target.e
-    if (target.focus !== s.focus) {
-      te = 0
-      if (s.e < 0.02) s.focus = target.focus
-    }
-    s.e += (te - s.e) * (1 - Math.exp(-dt * 6))
+    const k = 1 - Math.exp(-dt * 3.2)
     for (let i = 0; i < 3; i++) {
-      s.cam[i] += (target.cam[i] - s.cam[i]) * k
-      s.look[i] += (target.look[i] - s.look[i]) * k
+      s.cam[i] += (tc[i] - s.cam[i]) * k
+      s.look[i] += (tl[i] - s.look[i]) * k
     }
 
     // Камера: на узких экранах отъезжаем дальше, чтобы часы помещались по ширине,
@@ -966,10 +1154,8 @@ function WatchModel({ mode }) {
     )
     cam.lookAt(look.current)
 
-    // Лёгкий наклон за мышью (слабее при макросъёмке).
-    const par = 1 - smooth(THREE.MathUtils.clamp(scroll.t / 0.5, 0, 1)) * 0.8
-    const time = st.clock.elapsedTime
-    // В конструкторе — поворот мышью/пальцем и медленная «витрина», пока не трогают.
+    // Лёгкий наклон за мышью — только пока часы целые; в разборке стол неподвижен.
+    const par = 1 - smooth(clamp01(u)) * 0.9
     if (!drag.dragging) drag.x += dt * 0.12 * bw
     const rx = THREE.MathUtils.lerp(scroll.py * 0.25 * par, 0.18 + drag.y, bw)
     const ry = THREE.MathUtils.lerp(scroll.px * 0.35 * par, Math.sin(drag.x) * 0.9, bw)
@@ -977,140 +1163,30 @@ function WatchModel({ mode }) {
     root.current.rotation.x += (rx - root.current.rotation.x) * kr
     root.current.rotation.y += (ry - root.current.rotation.y) * kr
 
-    const P_ = parts.current
-    for (const part of PARTS) {
-      for (const name of part.names) {
-        const el = P_[name]
-        if (!el) continue
-        if (!homes.current[name]) homes.current[name] = el.position.clone()
-        el.rotation.set(0, 0, 0)
-        el.scale.setScalar(1)
-        el.position.x = homes.current[name].x
-        el.position.y = homes.current[name].y
-      }
+    // Стекло почти невидимо — на витрине делаем его заметнее.
+    const glassShow = page >= 0 && page < N && PARTS[page].id === 'crystal' ? focusW : 0
+    m.crystal.opacity = 0.14 + glassShow * 0.3
+    m.crystal.color.set(glassShow > 0.05 ? '#cfe6ff' : '#eaf4ff')
+
+    // Стол часовщика виден только в секции механизма.
+    if (table.current) {
+      table.current.material.opacity = scroll.wv * (1 - bw)
+      table.current.visible = table.current.material.opacity > 0.01
+      table.current.material.color.set(mode === 'light' ? '#d8d2c8' : '#1b1712')
     }
 
-    // Стрелки — реальное время, секундная «метёт» 8 шагами в секунду.
-    const now = new Date()
-    const sec = now.getSeconds() + Math.floor(now.getMilliseconds() / 125) / 8
-    const min = now.getMinutes() + sec / 60
-    const hr = (now.getHours() % 12) + min / 60
-    if (P_.hour) P_.hour.rotation.z = -(hr / 12) * TAU
-    if (P_.minute) P_.minute.rotation.z = -(min / 60) * TAU
-    if (P_.second) P_.second.rotation.z = -(sec / 60) * TAU
-
-    // Механизм
-    const beats = time * 6
-    const tick = Math.floor(beats)
-    const frac = beats - tick
-    const easeTick = tick + Math.min(1, frac * 5)
-    for (const name of ['barrel', 'center', 'third', 'fourth']) {
-      const el = P_[name]
-      if (el) el.rotation.z = time * el.userData.spin
-    }
-    if (P_.escape) P_.escape.rotation.z = (-easeTick * TAU) / 15 / 2
-    if (P_.fork) P_.fork.rotation.z = Math.tanh(Math.sin(beats * Math.PI) * 6) * 0.14
-    const bal = Math.sin(time * TAU * 3) * 2.5
-    if (P_.balanceWheel) P_.balanceWheel.rotation.z = bal
-    if (P_.hairspring) {
-      P_.hairspring.rotation.z = bal * 0.12
-      const sc = 1 + Math.sin(time * TAU * 3) * 0.06
-      P_.hairspring.scale.set(sc, sc, 1)
-    }
-    if (P_.ratchet) P_.ratchet.rotation.z = time * 0.03
-    if (P_.rotor) P_.rotor.rotation.z = Math.sin(time * 0.35) * 1.2 + time * 0.08
-
-    // Разборка
-    const sp = s.spread
-    const lift = s.bridge
-    const setZ = (name, z0, dz) => P_[name] && (P_[name].position.z = z0 + dz)
-    setZ('plate', 0, -sp * 0.2)
-    setZ('barrel', 0.1, sp * 0.35)
-    setZ('center', 0.2, sp * 0.6)
-    setZ('third', 0.27, sp * 0.82)
-    setZ('fourth', 0.21, sp * 0.72)
-    setZ('escape', 0.26, sp * 0.95)
-    setZ('fork', 0.3, sp * 1.1)
-    setZ('balance', 0.32, sp * 1.35)
-    setZ('bridges', 0, lift * 1.45 + sp * 0.5)
-    setZ('screws', 0, lift * 1.85 + sp * 0.9)
-    setZ('rotor', 0.5, lift * 1.6 + sp * 0.6)
-    setZ('case', 0, -s.drop * 1.6)
-    if (P_.crown) P_.crown.position.x = 2.2 + s.drop * 0.6
-    if (P_.crown) P_.crown.position.z = 0.04 - s.drop * 1.6
-    setZ('dial', 0, s.fly * 2.8)
-    setZ('hands', 0, s.fly * 3.6)
-    setZ('crystal', 0, s.fly * 4.6)
-
-    const fadeTop = 1 - THREE.MathUtils.clamp((s.fly - 0.35) / 0.6, 0, 1)
-    m.dial.opacity = fadeTop
-    m.appliedGold.opacity = fadeTop
-    m.lume.opacity = fadeTop
-    m.handGold.opacity = fadeTop
-    m.handSec.opacity = fadeTop
-    m.crystal.opacity = 0.14 * fadeTop
-    if (P_.dial) P_.dial.visible = fadeTop > 0.01
-    if (P_.hands) P_.hands.visible = fadeTop > 0.01
-    if (P_.crystal) P_.crystal.visible = fadeTop > 0.01
-    Object.values(m.bridgeSet).forEach((mat) => (mat.opacity = s.bop))
-    // Ротор прячется сразу после циферблата, чтобы не загораживать мосты.
-    const rotorFade = s.bop * (1 - THREE.MathUtils.clamp((s.fly - 0.6) / 0.3, 0, 1) * (1 - sp))
-    m.bridgeSet.rotor.opacity = rotorFade
-    m.bridgeSet.engraveRotor.opacity = rotorFade
-    if (P_.rotor) P_.rotor.visible = rotorFade > 0.02
-    if (P_.case) P_.case.visible = s.drop < 0.98
-
-    // Витрина: выбранная деталь вылетает к камере, разворачивается к зрителю и увеличивается.
-    const e = s.focus >= 0 ? s.e : 0
-    cam.updateMatrixWorld()
-    root.current.updateMatrixWorld()
-    const dShow = 4.4 * f
-    if (e > 0.001) {
-      const part = PARTS[s.focus]
-      const els = part.names.map((n) => P_[n]).filter(Boolean)
-      els.forEach((el) => (el.visible = true))
-      if (part.id === 'case') P_.case.visible = true
-      // Точка витрины: справа от панели на компьютере, сверху на телефоне.
-      const ndc = aspect >= 1 ? [0.36, 0.02] : [0, 0.3]
-      tmp.v.set(ndc[0], ndc[1], 0.5).unproject(cam).sub(cam.position).normalize()
-      tmp.t.copy(cam.position).addScaledVector(tmp.v, dShow)
-      root.current.worldToLocal(tmp.t)
-      tmp.c.copy(cam.position)
-      root.current.worldToLocal(tmp.c)
-      tmp.c.sub(tmp.t).normalize()
-      tmp.qa.setFromUnitVectors(tmp.z, tmp.c)
-      tmp.e.set(Math.sin(time * 0.6) * 0.28, Math.sin(time * 0.45) * 0.4, 0)
-      tmp.qb.setFromEuler(tmp.e)
-      tmp.q.copy(tmp.id).slerp(tmp.qa.multiply(tmp.qb), e)
-      tmp.pivot.set(0, 0, 0)
-      els.forEach((el) => tmp.pivot.add(el.position))
-      tmp.pivot.divideScalar(els.length)
-      const sc = 1 + (part.scale - 1) * e
-      tmp.t.sub(tmp.pivot).multiplyScalar(e).add(tmp.pivot)
-      for (const el of els) {
-        tmp.off.copy(el.position).sub(tmp.pivot).multiplyScalar(sc).applyQuaternion(tmp.q)
-        el.position.copy(tmp.t).add(tmp.off)
-        el.quaternion.premultiply(tmp.q)
-        el.scale.setScalar(sc)
-      }
-      if (part.id === 'dial') {
-        m.dial.opacity = m.appliedGold.opacity = m.lume.opacity = m.handGold.opacity = m.handSec.opacity = 1
-      }
-      if (part.id === 'rotor' || part.id === 'bridges') {
-        Object.values(m.bridgeSet).forEach((mat) => (mat.opacity = 1))
-      }
-    }
-    // Затемняющая «шторка» между обзором и витриной.
+    // Затемняющая «шторка» за деталью на витрине.
     if (dim.current) {
-      const dPlane = dShow * 1.3
+      const camDist = Math.hypot(s.cam[0] - s.look[0], s.cam[1] - s.look[1], s.cam[2] - s.look[2]) * f
+      const dPlane = camDist + focusR * 0.9 + 0.3
       tmp.v.set(0, 0, -1).applyQuaternion(cam.quaternion)
       dim.current.position.copy(cam.position).addScaledVector(tmp.v, dPlane)
       dim.current.quaternion.copy(cam.quaternion)
       const hgt = 2 * dPlane * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.6
       dim.current.scale.set(hgt * Math.max(1, aspect) * 1.6, hgt, 1)
-      dim.current.material.opacity = e * (mode === 'light' ? 0.72 : 0.68)
+      dim.current.material.opacity = focusW * (mode === 'light' ? 0.55 : 0.5)
       dim.current.material.color.set(mode === 'light' ? '#f3f4f7' : '#05060a')
-      dim.current.visible = e > 0.001
+      dim.current.visible = focusW > 0.01
     }
 
     // Цвета: подсветка и циферблат берут палитру текущей секции.
@@ -1162,10 +1238,10 @@ function WatchModel({ mode }) {
         intensity={mode === 'light' ? 2.4 : 2.0}
         castShadow
         shadow-mapSize={IS_TOUCH ? [1024, 1024] : [2048, 2048]}
-        shadow-camera-left={-3.2}
-        shadow-camera-right={3.2}
-        shadow-camera-top={3.2}
-        shadow-camera-bottom={-3.2}
+        shadow-camera-left={-10}
+        shadow-camera-right={10}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
         shadow-camera-near={1}
         shadow-camera-far={20}
         shadow-bias={-0.0004}
@@ -1178,6 +1254,11 @@ function WatchModel({ mode }) {
       <mesh ref={dim} renderOrder={10} visible={false}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial transparent depthWrite={false} opacity={0} toneMapped={false} />
+      </mesh>
+
+      <mesh ref={table} receiveShadow visible={false}>
+        <circleGeometry args={[13, 96]} />
+        <meshStandardMaterial transparent alphaMap={tableAlpha} roughness={0.95} metalness={0} depthWrite={false} />
       </mesh>
 
       <group ref={root}>

@@ -826,7 +826,7 @@ function PageContent({ page }) {
         <motion.span className="watch-step" variants={lineVariants} custom={0}>Механизм · {PARTS.length} деталей</motion.span>
         <motion.h3 variants={lineVariants} custom={1}>Заглянем внутрь часов</motion.h3>
         <motion.p variants={lineVariants} custom={2}>
-          Прокручивайте вниз: каждая деталь по очереди выйдет вперёд и расскажет, за что отвечает, а потом вернётся на своё место.
+          Прокручивайте вниз: детали вынимаются по одной, сверху вниз — как это делает часовщик. Каждая покажется крупно, расскажет, за что отвечает, и ляжет на стол.
         </motion.p>
         <motion.div className="watch-scroll-hint" variants={lineVariants} custom={3}>
           <span /> Листайте
@@ -837,10 +837,10 @@ function PageContent({ page }) {
   if (page === 'final') {
     return (
       <>
-        <motion.span className="watch-step" variants={lineVariants} custom={0}>Финал</motion.span>
-        <motion.h3 variants={lineVariants} custom={1}>Все {PARTS.length} деталей вместе</motion.h3>
+        <motion.span className="watch-step" variants={lineVariants} custom={0}>Финал · стол часовщика</motion.span>
+        <motion.h3 variants={lineVariants} custom={1}>Механизм разобран</motion.h3>
         <motion.p variants={lineVariants} custom={2}>
-          Так выглядит механизм в полном разлёте. Прокрутите вверх — детали снова по очереди выйдут вперёд, а часы соберутся.
+          Все {PARTS.length} деталей разложены на столе часовщика. Прокрутите вверх — они по очереди вернутся в свои гнёзда, и часы соберутся.
         </motion.p>
       </>
     )
